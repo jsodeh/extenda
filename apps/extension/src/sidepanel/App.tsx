@@ -569,21 +569,26 @@ function AppContent() {
     return (
         <ErrorBoundary>
             <ToastContainer />
-            <ChatLayout currentPage={currentPage} onNavigate={handleRecieveNavigation} status={status}>
+            <ChatLayout
+                currentPage={currentPage}
+                onNavigate={handleRecieveNavigation}
+                status={status}
+                onReconnect={() => accessToken && wsClient.connect(accessToken)}
+            >
                 <div className="flex flex-col min-h-full pb-60">
                     <div className="flex-1">
                         {messages.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center h-[50vh] text-center p-8 opacity-50">
-                                <div className="flex flex-col items-center justify-center mb-4">
+                            <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)] text-center p-8 opacity-50">
+                                <div className="flex flex-col items-center justify-center">
                                     <img
                                         src={iconLight}
                                         alt="Extenda Logo"
-                                        className="w-24 h-24 dark:hidden"
+                                        className="w-24 h-24 dark:hidden drop-shadow-lg"
                                     />
                                     <img
                                         src={iconDark}
                                         alt="Extenda Logo"
-                                        className="w-24 h-24 hidden dark:block"
+                                        className="w-24 h-24 hidden dark:block drop-shadow-lg"
                                     />
                                 </div>
                             </div>
@@ -616,7 +621,7 @@ function AppContent() {
                 </div>
 
                 <div className="fixed bottom-0 left-0 right-0 z-10">
-                    <InputArea onSend={handleSubmit} disabled={status !== 'Connected' || !!pendingApproval} />
+                    <InputArea onSend={handleSubmit} disabled={!!pendingApproval} />
                 </div>
             </ChatLayout>
         </ErrorBoundary>

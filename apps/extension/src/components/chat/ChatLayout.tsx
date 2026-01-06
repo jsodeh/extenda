@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTheme } from '../ThemeProvider';
-import { Moon, Sun, Monitor, Settings, Menu } from 'lucide-react';
+import { Moon, Sun, RefreshCw } from 'lucide-react';
 import NavigationMenu, { Page } from '../NavigationMenu';
 import iconLight from '../../assets/icon-light.png';
 import iconDark from '../../assets/icon-dark.png';
@@ -10,9 +10,10 @@ interface ChatLayoutProps {
     currentPage: Page;
     onNavigate: (page: Page) => void;
     status: string;
+    onReconnect?: () => void;
 }
 
-export function ChatLayout({ children, currentPage, onNavigate, status }: ChatLayoutProps) {
+export function ChatLayout({ children, currentPage, onNavigate, status, onReconnect }: ChatLayoutProps) {
     const { theme, setTheme } = useTheme();
 
     return (
@@ -31,12 +32,25 @@ export function ChatLayout({ children, currentPage, onNavigate, status }: ChatLa
                             alt="Extenda"
                             className="h-6 w-auto hidden dark:block drop-shadow-md"
                         />
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${status === 'Connected'
-                            ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-900/50 dark:bg-green-900/20 dark:text-green-400'
-                            : 'border-yellow-200 bg-yellow-50 text-yellow-700 dark:border-yellow-900/50 dark:bg-yellow-900/20 dark:text-yellow-400'
-                            }`}>
-                            {status}
-                        </span>
+                        {/* Connection indicator */}
+                        <div className="flex items-center gap-1">
+                            <div
+                                className={`w-2 h-2 rounded-full ${status === 'Connected'
+                                    ? 'bg-green-500 shadow-[0_0_4px_rgba(34,197,94,0.5)]'
+                                    : 'bg-red-400'
+                                    }`}
+                                title={status}
+                            />
+                            {status !== 'Connected' && onReconnect && (
+                                <button
+                                    onClick={onReconnect}
+                                    className="p-1 rounded hover:bg-muted text-muted-foreground transition-colors"
+                                    title="Reconnect"
+                                >
+                                    <RefreshCw size={12} />
+                                </button>
+                            )}
+                        </div>
                     </div>
 
                     <div className="flex items-center gap-1">
