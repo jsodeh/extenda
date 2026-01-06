@@ -1,0 +1,41 @@
+{
+  "version": "5",
+  "dialect": "pg",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1765096330595,
+      "tag": "0000_tiny_sasquatch",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1765419615257,
+      "tag": "0001_absent_betty_brant",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1766025934202,
+      "tag": "0002_milky_random",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1766079349391,
+      "tag": "0003_graceful_newton_destine",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1766089349391,
+      "tag": "0008_schema_sync",
+      "breakpoints": true
+    }
+  ]
+}

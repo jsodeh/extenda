@@ -1,0 +1,43 @@
+{
+    "manifest_version": 3,
+    "name": "Extenda - AI Executive Assistant",
+    "version": "0.0.1",
+    "icons": {
+        "16": "icon-16.png",
+        "48": "icon-48.png",
+        "128": "icon-128.png"
+    },
+    "description": "Autonomous AI agent for browser automation",
+    "permissions": [
+        "activeTab",
+        "storage",
+        "tabs",
+        "scripting",
+        "sidePanel",
+        "history",
+        "bookmarks"
+    ],
+    "background": {
+        "service_worker": "src/background/index.ts",
+        "type": "module"
+    },
+    "side_panel": {
+        "default_path": "src/sidepanel/index.html"
+    },
+    "action": {
+        "default_title": "Open Extenda"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "<all_urls>"
+            ],
+            "js": [
+                "src/content/index.ts"
+            ]
+        }
+    ],
+    "host_permissions": [
+        "<all_urls>"
+    ]
+}

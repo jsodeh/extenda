@@ -1,0 +1,88 @@
+import { io, Socket } from 'socket.io-client';
+
+class WebSocketClient {
+    private socket: Socket | null = null;
+    private currentToken?: string;
+    private listeners: Map<string, Function[]> = new Map();
+
+    connect(token?: string) {
+        // If already connected with the same token, don't reconnect
+        if (this.socket && this.socket.connected && this.currentToken === token) {
+            return;
+        }
+
+        // If connected but token changed, disconnect first
+        if (this.socket && this.currentToken !== token) {
+            this.socket.disconnect();
+        }
+
+        this.currentToken = token;
+
+        this.socket = io('https://extenda-api-604583941288.us-central1.run.app', {
+            transports: ['polling', 'websocket'],
+            reconnection: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000,
+            timeout: 20000,
+            auth: {
+                token
+            }
+        });
+
+        this.socket.on('connect', () => {
+            console.log('Connected to Extenda API via WebSocket');
+        });
+
+        this.socket.on('disconnect', () => {
+            console.log('Disconnected from Extenda API');
+        });
+
+        // Replay listeners
+        this.listeners.forEach((callbacks, event) => {
+            callbacks.forEach(cb => this.socket?.on(event, cb as any));
+        });
+    }
+
+    disconnect() {
+        if (this.socket) {
+            this.socket.disconnect();
+            this.socket = null;
+        }
+    }
+
+    on(event: string, callback: Function) {
+        if (!this.listeners.has(event)) {
+            this.listeners.set(event, []);
+        }
+        this.listeners.get(event)?.push(callback);
+
+        if (this.socket) {
+            this.socket.on(event, callback as any);
+        }
+    }
+
+    emit(event: string, data?: any) {
+        this.socket?.emit(event, data);
+    }
+
+    off(event: string, callback?: Function) {
+        if (this.listeners.has(event)) {
+            if (callback) {
+                const cbs = this.listeners.get(event)?.filter(cb => cb !== callback) || [];
+                this.listeners.set(event, cbs);
+            } else {
+                this.listeners.delete(event);
+            }
+        }
+
+        if (this.socket) {
+            if (callback) {
+                this.socket.off(event, callback as any);
+            } else {
+                this.socket.off(event);
+            }
+        }
+    }
+}
+
+export const wsClient = new WebSocketClient();
