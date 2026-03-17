@@ -19,6 +19,8 @@ import templates from './routes/templates.js';
 import auth from './routes/auth.js';
 import user from './routes/user.js';
 import knowledge from './routes/knowledge.js';
+import { vision } from './routes/vision.js';
+import config from './routes/config.js';
 
 const app = new Hono();
 
@@ -36,5 +38,7 @@ app.route('/oauth/auth', authOAuth);
 app.route('/api/preferences', preferences);
 app.route('/api/templates', templates);
 app.route('/knowledge', knowledge);
+app.route('/vision', vision);
+app.route('/api/config', config);
 
 export default app;

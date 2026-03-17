@@ -45,6 +45,10 @@ chrome.runtime.onMessage.addListener((message: ContentScriptMessage, sender, sen
             handleFormFiller(message.params, message.requestId).then(sendResponse);
             return true;
 
+        case 'EXECUTE_CLICK_AT_COORDINATES':
+            handleClickAtCoordinates(message.params, message.requestId).then(sendResponse);
+            return true;
+
         case 'PING':
             sendResponse({ type: 'PONG', success: true });
             return false;
@@ -158,9 +162,71 @@ async function handleFormFiller(params: FormFillerParams, requestId?: string): P
 }
 
 /**
+ * Handle click at specific coordinates (for smart click / vision-based clicking)
+ */
+async function handleClickAtCoordinates(
+    params: { x: number; y: number },
+    requestId?: string
+): Promise<ContentScriptResponse> {
+    try {
+        const { x, y } = params;
+
+        // Get the element at the specified coordinates
+        const element = document.elementFromPoint(x, y);
+
+        if (!element) {
+            return {
+                type: 'CLICK_RESULT',
+                success: false,
+                error: `No element found at coordinates (${x}, ${y})`,
+                requestId
+            };
+        }
+
+        console.log('[Extenda] Clicking element at', x, y, ':', element);
+
+        // Simulate mouse events for realistic clicking
+        const clickEvent = new MouseEvent('click', {
+            view: window,
+            bubbles: true,
+            cancelable: true,
+            clientX: x,
+            clientY: y
+        });
+
+        element.dispatchEvent(clickEvent);
+
+        // Also try native click if available
+        if (element instanceof HTMLElement) {
+            element.click();
+        }
+
+        return {
+            type: 'CLICK_RESULT',
+            success: true,
+            data: {
+                tagName: element.tagName,
+                text: element.textContent?.slice(0, 50),
+                x,
+                y
+            },
+            requestId
+        };
+    } catch (error) {
+        return {
+            type: 'CLICK_RESULT',
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error',
+            requestId
+        };
+    }
+}
+
+/**
  * Notify background script that content script is ready
  */
 chrome.runtime.sendMessage({ type: 'CONTENT_SCRIPT_READY', url: window.location.href });
 
 // Export for testing
 export { DOMReader, GmailScraper };
+

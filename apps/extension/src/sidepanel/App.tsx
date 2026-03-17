@@ -23,6 +23,14 @@ import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { TextShimmer } from '../components/ui/TextShimmer';
 
+interface FileAttachment {
+    name: string;
+    type: string;
+    size: number;
+    url?: string;  // For displaying after upload
+    preview?: string; // Data URL for images
+}
+
 interface Message {
     id: string;
     role: 'user' | 'assistant' | 'system';
@@ -32,6 +40,7 @@ interface Message {
         id: string;
         steps: any[];
     };
+    attachments?: FileAttachment[];
     error?: boolean;
 }
 
@@ -57,8 +66,35 @@ function AppContent() {
     const [showRegister, setShowRegister] = useState(false);
     const [currentExecutionId, setCurrentExecutionId] = useState<string | null>(null);
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+    const [geminiApiKey, setGeminiApiKey] = useState<string>('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const workflowRef = useRef<{ id: string; steps: WorkflowStep[] } | null>(null);
+
+    // Load Gemini API key from server
+    useEffect(() => {
+        const fetchVoiceConfig = async () => {
+            if (!accessToken) return;
+
+            try {
+                const response = await fetch('https://extenda-api-604583941288.us-central1.run.app/api/config/voice', {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    setGeminiApiKey(data.geminiApiKey);
+                } else {
+                    console.warn('[App] Voice config not available');
+                }
+            } catch (error) {
+                console.error('[App] Failed to fetch voice config:', error);
+            }
+        };
+
+        fetchVoiceConfig();
+    }, [accessToken]);
 
     // Keep ref in sync with state
     useEffect(() => {
@@ -114,7 +150,12 @@ function AppContent() {
     }, [messages, currentWorkflow]);
 
     const addMessage = (message: Message) => {
-        setMessages(prev => [...prev, message]);
+        // Defensive: ensure content is always defined to prevent downstream errors
+        const safeMessage = {
+            ...message,
+            content: message.content ?? ''
+        };
+        setMessages(prev => [...prev, safeMessage]);
     };
 
     const updateWorkflowStep = (stepId: string, updates: Partial<WorkflowStep>) => {
@@ -199,7 +240,7 @@ function AppContent() {
 
             // Only add the plan message if it's a NEW workflow (or we can just log it always, but might be spammy on pause)
             // If status is paused, it's an update. If status is NOT paused, it's likely a new start (or just a plan event).
-            // Actually, backend emits WORKFLOW_PLAN at start AND at pause.
+            // backend emits WORKFLOW_PLAN at start AND at pause.
             // We probably only want to show "Created plan" once.
             // But we can't easily check `prev` here outside the setter.
             // Let's rely on data.status. If 'paused', don't add "Created plan" message? 
@@ -262,7 +303,6 @@ function AppContent() {
                     const finalSteps = finalWorkflow.steps.map(s => ({
                         ...s,
                         status: 'completed' as const,
-                        // If it was already completed, keep result, else undefined (or could imply success)
                         result: s.result
                     }));
 
@@ -278,106 +318,67 @@ function AppContent() {
                         return msg;
                     });
 
-                    // Determine final output message
-                    let finalContent = 'Workflow completed successfully.';
+                    // Generate contextual summary from workflow steps
+                    const generateWorkflowSummary = (steps: any[]): string | null => {
+                        const actions = steps
+                            .filter(s => s.status === 'completed')
+                            .map(s => {
+                                const tool = s.tool?.toLowerCase() || '';
+                                const desc = s.description?.toLowerCase() || '';
 
-                    // Look for the last completed step with a meaningful result
-                    const completedSteps = finalSteps;
-                    if (completedSteps && completedSteps.length > 0) {
-                        // Strategy 1: Check for tool-specific success messages
-                        const toolTypes = completedSteps.map(s => s.tool);
-
-                        // Email workflows
-                        if (toolTypes.some(t => t?.includes('GmailAdapter_send') || t?.includes('gmail') && t?.includes('send'))) {
-                            finalContent = '✅ Email sent successfully!';
-                        }
-                        // Calendar workflows  
-                        else if (toolTypes.some(t => t?.includes('GoogleCalendarAdapter') || t?.includes('calendar'))) {
-                            if (toolTypes.some(t => t?.includes('create') || t?.includes('add'))) {
-                                finalContent = '✅ Calendar event created successfully!';
-                            } else if (toolTypes.some(t => t?.includes('list') || t?.includes('get'))) {
-                                finalContent = '✅ Calendar checked successfully!';
-                            } else {
-                                finalContent = '✅ Calendar updated successfully!';
-                            }
-                        }
-                        // If no tool-specific message, try extracting meaningful result
-                        else {
-                            // Strategy 2: Iterate backwards to find the first meaningful "content" result.
-                            // Ideally, we want the result of the main action (Summary), not the side-effect (Notifier).
-
-                            let meaningfulResult = null;
-
-                            const lastStep = completedSteps[completedSteps.length - 1];
-
-                            // Check last step matches specially
-                            if (lastStep.tool === 'Notifier' && lastStep.params && lastStep.params.message) {
-                                meaningfulResult = `*Notification sent:* ${lastStep.params.message}`;
-                            }
-
-                            // If no specific notifier message or we want to look deeper:
-                            if (!meaningfulResult) {
-                                for (let i = completedSteps.length - 1; i >= 0; i--) {
-                                    const step = completedSteps[i];
-                                    if (!step.result) continue;
-
-                                    const res = step.result;
-
-                                    // Helper to extract text from result object
-                                    const extractText = (r: any): string | null => {
-                                        if (!r) return null;
-                                        if (typeof r === 'string') return r;
-                                        if (typeof r === 'object') {
-                                            // Prioritize explicit friendly fields
-                                            if (r.output) return typeof r.output === 'string' ? r.output : JSON.stringify(r.output, null, 2);
-                                            if (r.payload) return typeof r.payload === 'string' ? r.payload : JSON.stringify(r.payload, null, 2);
-                                            if (r.message && r.message.length > 20) return r.message; // meaningful message
-                                            if (r.summary) return `**Summary:**\n${r.summary}`;
-                                            if (r.analysis) return `**Analysis:**\n${JSON.stringify(r.analysis, null, 2)}`;
-
-                                            // Special handling for Gmail list_emails result
-                                            if (r.emails && Array.isArray(r.emails) && r.emails.length > 0) {
-                                                const items = r.emails.slice(0, 5).map((e: any) =>
-                                                    `- **${e.from || 'Unknown'}**: ${e.subject || '(No Subject)'}`
-                                                ).join('\n');
-                                                return `**Found ${r.emails.length} emails:**\n${items}${r.emails.length > 5 ? '\n...' : ''}`;
-                                            }
-
-                                            // Avoid returning "{success: true}" or small status objects
-                                            const keys = Object.keys(r);
-                                            if (keys.length === 1 && keys[0] === 'success') return null;
-
-                                            // Fallback recursion for nested result
-                                            if (r.result) return extractText(r.result);
-
-                                            // If it has many keys, might be data? 
-                                            if (keys.length > 2) return JSON.stringify(r, null, 2);
-                                        }
-                                        return null;
-                                    };
-
-                                    const text = extractText(res);
-                                    if (text) {
-                                        meaningfulResult = text;
-                                        break; // Found the most recent meaningful output
-                                    }
+                                // Google Forms
+                                if (tool.includes('googleforms') || tool.includes('forms')) {
+                                    if (tool.includes('create') || desc.includes('create')) return 'created a Google Form';
+                                    if (tool.includes('add_questions') || desc.includes('question')) return 'added questions';
                                 }
-                            }
+                                // Gmail
+                                if (tool.includes('gmail') || tool.includes('email')) {
+                                    if (tool.includes('send') || desc.includes('send')) return 'sent the email';
+                                    if (tool.includes('list') || desc.includes('list')) return 'retrieved emails';
+                                }
+                                // Calendar
+                                if (tool.includes('calendar')) {
+                                    if (tool.includes('create') || desc.includes('create')) return 'created a calendar event';
+                                    if (tool.includes('list') || desc.includes('list')) return 'checked your calendar';
+                                }
+                                // Drive
+                                if (tool.includes('drive')) {
+                                    if (tool.includes('create') || desc.includes('create')) return 'created a document';
+                                    if (tool.includes('list') || desc.includes('list')) return 'found files';
+                                }
+                                // AI Processing
+                                if (tool.includes('aiprocessor') || tool.includes('summarize')) {
+                                    return 'analyzed the content';
+                                }
+                                // Notifier - skip, it's just confirmation
+                                if (tool.includes('notifier')) return null;
 
-                            if (meaningfulResult) {
-                                finalContent = meaningfulResult;
-                            }
-                        }
+                                // Fallback to step description or tool name
+                                return s.description || s.tool?.replace(/Adapter_/g, ' ').replace(/_/g, ' ');
+                            })
+                            .filter(Boolean); // Remove nulls
+
+                        if (actions.length === 0) return null;
+                        if (actions.length === 1) return `✅ Done! I ${actions[0]}.`;
+
+                        // Join with proper grammar
+                        const last = actions.pop();
+                        return `✅ Done! I ${actions.join(', ')} and ${last}.`;
+                    };
+
+                    const summary = generateWorkflowSummary(finalSteps);
+
+                    // Only add message if we have a meaningful summary
+                    if (summary) {
+                        return [...updated, {
+                            id: Date.now().toString(),
+                            role: 'assistant' as const,
+                            content: summary,
+                            timestamp: new Date()
+                        }];
                     }
 
-                    // Add the final message (as Assistant if it's content, System if generic)
-                    const isGeneric = finalContent === 'Workflow completed successfully.';
-                    return [...updated, {
-                        id: Date.now().toString(),
-                        role: isGeneric ? 'system' : 'assistant',
-                        content: finalContent,
-                        timestamp: new Date()
-                    }];
+                    return updated; // No empty messages
                 });
             }
 
@@ -424,25 +425,35 @@ function AppContent() {
         };
     }, [accessToken, currentSessionId]); // Add currentSessionId to dependency if needed, or better use ref for sessionId if callback is stale
 
-    const handleSubmit = async (message: string, file?: File) => {
-        if (!message.trim() && !file) return;
+    const handleSubmit = async (message: string, files?: File[]) => {
+        if (!message.trim() && (!files || files.length === 0)) return;
 
-        // Optimistically add user message
+        // Create attachment info for display
+        const attachments: FileAttachment[] = files?.map(file => ({
+            name: file.name,
+            type: file.type,
+            size: file.size
+        })) || [];
+
+        // Optimistically add user message with attachments
         const userMsgId = Date.now().toString();
         addMessage({
             id: userMsgId,
             role: 'user',
-            content: message + (file ? ` [Attached: ${file.name}]` : ''),
-            timestamp: new Date()
+            content: message,
+            timestamp: new Date(),
+            attachments: attachments.length > 0 ? attachments : undefined
         });
 
         try {
-            // Upload file if present
-            if (file && accessToken) {
-                const formData = new FormData();
-                formData.append('file', file);
+            let fileContents: string[] = [];
 
-                const uploadRes = await fetch('https://extenda-api-604583941288.us-central1.run.app/api/knowledge/upload', {
+            // Upload and process files if present
+            if (files && files.length > 0 && accessToken) {
+                const formData = new FormData();
+                files.forEach(file => formData.append('files', file));
+
+                const uploadRes = await fetch('https://extenda-api-604583941288.us-central1.run.app/api/knowledge/process-files', {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${accessToken}`
@@ -451,16 +462,19 @@ function AppContent() {
                 });
 
                 if (!uploadRes.ok) {
-                    throw new Error('File upload failed');
+                    throw new Error('File processing failed');
                 }
 
-                // Add system notification for upload? Or just let the AI know via context? 
-                // The AI will find it in knowledge base via RAG.
+                const result = await uploadRes.json();
+                fileContents = result.contents || [];
             }
 
+            // Include file contents in the workflow intent if any
+            const enhancedMessage = fileContents.length > 0
+                ? `${message}\n\n[Attached file contents]:\n${fileContents.join('\n---\n')}`
+                : message;
 
-
-            wsClient.emit('workflow:start', { intent: message, sessionId: currentSessionId });
+            wsClient.emit('workflow:start', { intent: enhancedMessage, sessionId: currentSessionId });
 
         } catch (error) {
             console.error('Submission failed:', error);
@@ -608,10 +622,7 @@ function AppContent() {
 
                         {/* Thinking Indicator */}
                         {agentStatus && (
-                            <div className="max-w-3xl mx-auto px-4 py-4 flex items-center gap-3">
-                                <div className="h-8 w-8 rounded-sm bg-primary/10 flex items-center justify-center border border-primary/20">
-                                    <span className="text-xs font-bold text-primary animate-pulse">E</span>
-                                </div>
+                            <div className="max-w-3xl mx-auto px-4 py-2">
                                 <TextShimmer className="text-sm font-medium">
                                     {agentStatus.state === 'paused' ? 'Waiting for approval...' : agentStatus.message}
                                 </TextShimmer>
@@ -621,7 +632,13 @@ function AppContent() {
                 </div>
 
                 <div className="fixed bottom-0 left-0 right-0 z-10">
-                    <InputArea onSend={handleSubmit} disabled={!!pendingApproval} />
+                    <InputArea
+                        onSend={handleSubmit}
+                        disabled={!!pendingApproval}
+                        sessionId={currentSessionId}
+                        accessToken={accessToken}
+                        geminiApiKey={geminiApiKey}
+                    />
                 </div>
             </ChatLayout>
         </ErrorBoundary>

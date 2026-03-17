@@ -661,7 +661,8 @@ Do NOT return JSON. Return a natural language response.`;
                 const toolNameLower = toolName.toLowerCase();
 
                 // Check if tool is client-side or server-side (Case insensitive check)
-                if (toolNameLower === 'tabmanager' || toolNameLower === 'notifier') {
+                const WORKFLOW_CLIENT_TOOLS = ['tabmanager', 'notifier', 'domreader', 'formfiller', 'gmailscraper', 'screenshot', 'smartclick'];
+                if (WORKFLOW_CLIENT_TOOLS.includes(toolNameLower)) {
                     console.log(`[Orchestrator] Routing ${toolName} to client.`);
                     result = await this.executeClientTool(
                         execution.id,
@@ -778,8 +779,9 @@ Do NOT return JSON. Return a natural language response.`;
 
         console.log(`[DirectExecution] Executing ${tool} with params:`, params);
 
-        // Client-side tools (TabManager, Notifier)
-        if (tool === 'TabManager' || tool === 'Notifier') {
+        // Client-side tools (TabManager, Notifier, DOMReader, FormFiller, GmailScraper)
+        const CLIENT_SIDE_TOOLS = ['TabManager', 'Notifier', 'DOMReader', 'FormFiller', 'GmailScraper', 'Screenshot', 'SmartClick'];
+        if (CLIENT_SIDE_TOOLS.includes(tool)) {
             const executionId = randomUUID();
             const stepId = randomUUID();
 
@@ -820,18 +822,10 @@ Do NOT return JSON. Return a natural language response.`;
             const requestId = `${executionId}_${stepId}`;
             console.log(`[ToolExecution] Starting client tool ${tool} with requestId: ${requestId}`);
 
-            // 1. Send command to client
-            if (socket) {
-                // PREFERRED: Use specific socket for targeted delivery (direct commands)
-                console.log(`[ToolExecution] Sending to specific socket: ${socket.id}`);
-                socket.emit(EVENTS_SERVER.TOOL_EXECUTE, {
-                    executionId,
-                    stepId,
-                    tool,
-                    params
-                });
-            } else if (userId) {
-                // Broadcast to all user's sockets (sidepanel + background worker) via room
+            // CRITICAL: Always broadcast to user room for client-side tools
+            // The background worker has a SEPARATE socket connection from the sidepanel
+            // Using socket.emit() would only reach the sidepanel, not the background worker that handles tools
+            if (userId) {
                 console.log(`[ToolExecution] Broadcasting to room user:${userId}`);
                 this.io.to(`user:${userId}`).emit(EVENTS_SERVER.TOOL_EXECUTE, {
                     executionId,
@@ -840,8 +834,8 @@ Do NOT return JSON. Return a natural language response.`;
                     params
                 });
             } else {
-                // Fallback for workflows (legacy)
-                console.warn('[ToolExecution] Using broadcast fallback - this is deprecated');
+                // Fallback - broadcast to all (for workflows without userId)
+                console.warn('[ToolExecution] No userId - using broadcast fallback');
                 this.io.emit(EVENTS_SERVER.TOOL_EXECUTE, {
                     executionId,
                     stepId,
@@ -851,18 +845,15 @@ Do NOT return JSON. Return a natural language response.`;
             }
 
             // 2. Setup one-time listener for result
-            // CRITICAL FIX: Use io.on() for workflows, with manual cleanup
+            // CRITICAL: Always use io.on() because tool:result comes from the BACKGROUND WORKER socket,
+            // not the sidepanel socket. Both are in the user room, but they're DIFFERENT sockets.
             const handleResult = (data: ToolExecutionResult) => {
                 if (data.executionId === executionId && data.stepId === stepId) {
                     console.log(`[ToolExecution] Received result for requestId: ${requestId}`);
                     clearTimeout(timeoutHandle);
 
                     // Cleanup listener immediately
-                    if (socket) {
-                        socket.off(EVENTS_CLIENT.TOOL_RESULT, handleResult);
-                    } else {
-                        this.io?.off(EVENTS_CLIENT.TOOL_RESULT as any, handleResult);
-                    }
+                    this.io?.off(EVENTS_CLIENT.TOOL_RESULT as any, handleResult);
 
                     if (data.status === 'success') {
                         resolve(data.result);
@@ -872,28 +863,16 @@ Do NOT return JSON. Return a natural language response.`;
                 }
             };
 
-            // 3. Listen for response on the SERVER-SIDE socket connection
-            if (socket) {
-                // For direct commands: Listen on the specific socket instance
-                socket.once(EVENTS_CLIENT.TOOL_RESULT, handleResult);
-            } else {
-                // For workflows: MUST use io.on() not io.once()
-                // Client sockets emit TOOL_RESULT on their own connection,
-                // so we need to listen with on() which receives all client emissions
-                // The handleResult callback handles cleanup after matching
-                this.io.on(EVENTS_CLIENT.TOOL_RESULT as any, handleResult);
-            }
+            // 3. Listen for response from ANY client socket in the user's room
+            // Background worker emits tool:result on its own socket, so we must use io.on()
+            this.io.on(EVENTS_CLIENT.TOOL_RESULT as any, handleResult);
 
             // 4. Timeout with proper cleanup
             const timeoutHandle = setTimeout(() => {
                 console.error(`[ToolExecution] Timeout for requestId: ${requestId}`);
 
                 // Remove listener to prevent memory leak
-                if (socket) {
-                    socket.off(EVENTS_CLIENT.TOOL_RESULT, handleResult);
-                } else {
-                    this.io?.off(EVENTS_CLIENT.TOOL_RESULT as any, handleResult);
-                }
+                this.io?.off(EVENTS_CLIENT.TOOL_RESULT as any, handleResult);
 
                 reject(new Error(`Tool execution timed out after 30s (${tool})`));
             }, 30000);

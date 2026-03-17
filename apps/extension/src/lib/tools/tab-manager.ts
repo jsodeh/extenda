@@ -4,8 +4,10 @@ export async function handleTabManager(params: any): Promise<any> {
     const { action, ...args } = params;
 
     switch (action) {
+        case 'open':  // Alias from intent classifier
         case 'open_tab':
             return await openTab(args.url);
+        case 'close':  // Alias from intent classifier
         case 'close_tab':
             return await closeTab(args.tabId);
         case 'switch_tab':

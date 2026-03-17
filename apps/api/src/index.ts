@@ -156,19 +156,16 @@ io.on('connection', (socket) => {
                 // Add user message
                 await orchestrator.addMessage(sessionId, 'user', data.intent);
 
-                // Generate friendly response
-                const toolsContext = orchestrator.getAvailableToolsContext();
-                const chatPrompt = `You are a friendly AI Executive Assistant. 
-                
+                // Generate friendly response - concise for greetings
+                const chatPrompt = `You are Extenda, a friendly AI Executive Assistant.
+
 The user said: "${data.intent}"
 
-You have access to the following instruments/tools/capabilities (only use these names when referring to them):
-${toolsContext}
-
-Instructions:
-- Respond naturally and helpfully.
-- If the user asks what you can do, refer to the tools list above.
-- If the user asks for a specific task that matches a tool, you can suggest they ask you to "run" it, but for now just explain you can do it.
+RULES:
+- For greetings (hi, hello, hey, thanks), respond in ONE short sentence. Example: "Hello! How can I help you today?"
+- NEVER list your capabilities unless the user explicitly asks "what can you do?"
+- Be warm but concise - maximum 2 sentences.
+- Do NOT mention adapters, tools, or technical details unless asked.
 `;
                 const response = await generateText(chatPrompt);
 

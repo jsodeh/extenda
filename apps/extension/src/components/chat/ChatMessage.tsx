@@ -1,7 +1,15 @@
 import React from 'react';
-import { User, Bot, AlertTriangle, Terminal } from 'lucide-react';
+import { User, Bot, AlertTriangle, Terminal, FileText, Image as ImageIcon, Music, Video, File } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import PlanView from '../PlanView';
+
+interface FileAttachment {
+    name: string;
+    type: string;
+    size: number;
+    url?: string;
+    preview?: string;
+}
 
 interface Message {
     id: string;
@@ -12,8 +20,18 @@ interface Message {
         id: string;
         steps: any[];
     };
+    attachments?: FileAttachment[];
     error?: boolean;
 }
+
+// Get icon for file type
+const getFileIcon = (type: string) => {
+    if (type.startsWith('image/')) return ImageIcon;
+    if (type.startsWith('audio/')) return Music;
+    if (type.startsWith('video/')) return Video;
+    if (type.includes('pdf') || type.includes('document') || type.includes('text')) return FileText;
+    return File;
+};
 
 interface ChatMessageProps {
     message: Message;
@@ -34,24 +52,24 @@ const ChevronUp = ({ className }: { className?: string }) => (
 export function ChatMessage({ message, currentWorkflow, pendingStep, onApprove, onReject }: ChatMessageProps) {
     const isUser = message.role === 'user';
     const isSystem = message.role === 'system';
-    const isError = message.content.toLowerCase().includes('error') || message.error;
+    const isError = message.content?.toLowerCase().includes('error') || message.error;
 
     // Check if this message displays the active workflow that is pending approval
     const isPendingApproval = message.workflow && currentWorkflow && message.workflow.id === currentWorkflow.id && pendingStep;
     const [isExpanded, setIsExpanded] = React.useState(false); // Default to collapsed
 
     // Detect if this is a Plan update message (hidden in favor of the Plan component)
-    if (message.content.includes('Created plan with') || message.content.includes('Workflow completed')) {
+    if (message.content?.includes('Created plan with') || message.content?.includes('Workflow completed')) {
         // We still render it, but maybe distinct style
     }
 
     // Format error message using regex to see if it's a JSON block
-    let displayContent = message.content;
+    let displayContent = message.content || '';
     let isJsonError = false;
 
-    if (isError && message.content.trim().startsWith('{')) {
+    if (isError && displayContent.trim().startsWith('{')) {
         try {
-            const parsed = JSON.parse(message.content);
+            const parsed = JSON.parse(displayContent);
             if (parsed.error && parsed.error.includes('429')) {
                 displayContent = "We are experiencing high traffic. Please try again in a moment.";
                 isJsonError = true;
@@ -66,25 +84,11 @@ export function ChatMessage({ message, currentWorkflow, pendingStep, onApprove, 
 
     return (
         <div className={cn(
-            "group w-full py-3",
+            "group w-full py-1.5",
             isSystem ? "bg-muted/30" : "bg-background"
         )}>
-            <div className="max-w-3xl mx-auto px-4 flex gap-3">
-                {/* Avatar Column - only show for user and system messages */}
-                {(isUser || isSystem) && (
-                    <div className="flex-shrink-0 flex flex-col items-center">
-                        <div className={cn(
-                            "h-6 w-6 rounded-sm flex items-center justify-center",
-                            isUser ? "bg-muted" :
-                                "bg-orange-50 dark:bg-orange-900/20"
-                        )}>
-                            {isUser ? <User size={12} className="text-muted-foreground" /> :
-                                <AlertTriangle size={12} className="text-orange-600 dark:text-orange-400" />}
-                        </div>
-                    </div>
-                )}
-
-                {/* Content Column */}
+            <div className="max-w-3xl mx-auto px-4">
+                {/* Content Column - no avatar icons for cleaner alignment */}
                 <div className="flex-1 min-w-0 space-y-1">
                     <div className="flex items-baseline justify-between">
                         <span className="text-xs font-medium text-muted-foreground">
@@ -104,12 +108,34 @@ export function ChatMessage({ message, currentWorkflow, pendingStep, onApprove, 
                                 </p>
                                 <p className="mt-0.5 opacity-90">{displayContent}</p>
                             </div>
-                        ) : message.content.startsWith('✅ Step Completed') || message.content.startsWith('❌ Step Failed') ? (
+                        ) : message.content?.startsWith('✅ Step Completed') || message.content?.startsWith('❌ Step Failed') ? (
                             <div className="text-[10px] font-mono">
                                 <p className="whitespace-pre-wrap">{displayContent}</p>
                             </div>
                         ) : (
                             <p className="whitespace-pre-wrap">{displayContent}</p>
+                        )}
+
+                        {/* File Attachments Display for User Messages */}
+                        {isUser && message.attachments && message.attachments.length > 0 && (
+                            <div className="mt-2 flex flex-row gap-1.5 overflow-x-auto">
+                                {message.attachments.map((attachment, index) => {
+                                    const FileIcon = getFileIcon(attachment.type);
+                                    const ext = attachment.name.split('.').pop()?.toUpperCase() || '';
+                                    return (
+                                        <div
+                                            key={`${attachment.name}-${index}`}
+                                            className="flex items-center gap-1 px-1.5 py-0.5 bg-muted/50 rounded border border-border/50 flex-shrink-0"
+                                            title={attachment.name}
+                                        >
+                                            <FileIcon size={10} className="text-muted-foreground flex-shrink-0" />
+                                            <span className="text-[8px] text-muted-foreground truncate max-w-[40px]">
+                                                {attachment.name.length > 8 ? attachment.name.slice(0, 6) + '..' : attachment.name}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         )}
 
                         {/* Inline Plan View */}

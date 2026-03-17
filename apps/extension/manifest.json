@@ -15,7 +15,8 @@
         "scripting",
         "sidePanel",
         "history",
-        "bookmarks"
+        "bookmarks",
+        "offscreen"
     ],
     "background": {
         "service_worker": "src/background/index.ts",

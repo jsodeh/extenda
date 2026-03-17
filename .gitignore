@@ -1,15 +1,20 @@
 # Dependencies
-node_modules
+node_modules/
+apps/**/node_modules/
 
 # Build outputs
-dist
+dist/
+apps/**/dist/
 *.tsbuildinfo
 
 # Turbo
-.turbo
+.turbo/
+apps/**/.turbo/
+turbo-*.log
 
 # Environment files
 .env
+.env.*
 .env.local
 .env.*.local
 
@@ -28,7 +33,7 @@ Thumbs.db
 npm-debug.log*
 
 # Chrome extension dev
-apps/extension/dist
+apps/extension/dist/
 
 # API build
-apps/api/dist
+apps/api/dist/

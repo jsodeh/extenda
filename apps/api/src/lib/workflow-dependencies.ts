@@ -264,6 +264,13 @@ export class WorkflowDependencyResolver {
                 continue;
             }
 
+            // Robustness: Handle AI using 'files', 'items', 'emails', 'messages', 'results' etc when value IS already an array
+            // E.g., AI writes step-1.output.files.length but output is already [file1, file2, ...]
+            if (Array.isArray(value) && ['files', 'items', 'emails', 'messages', 'results', 'data', 'records', 'list'].includes(part)) {
+                console.log(`[DependencyResolver] Skipping '${part}' - value is already an array of ${value.length} items`);
+                continue;
+            }
+
             value = value?.[part];
             if (value === undefined) break;
         }

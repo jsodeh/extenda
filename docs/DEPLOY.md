@@ -63,15 +63,21 @@ gcloud run deploy extenda-api \
 - If the build fails finding `packages/shared`, ensure you run the command from the root of the repo (where the `Dockerfile` is).
 
 
+### Example deploy command (placeholders only)
+
+Do **not** commit real secrets into this repo. Use placeholders here and set real values via your CI/CD secrets manager or `gcloud run services update --update-env-vars`.
+
+```bash
 gcloud run deploy extenda-api \
-  --image gcr.io/extenda-ai/extenda-api \
+  --image gcr.io/YOUR_PROJECT_ID/extenda-api \
   --platform managed \
   --region us-central1 \
   --allow-unauthenticated \
-  --add-cloudsql-instances="extenda-ai:us-central1:extenda" \
-  --set-env-vars="DATABASE_URL=postgres://user:pass@/extenda?host=/cloudsql/extenda-ai:us-central1:extenda" \
-  --set-env-vars="GEMINI_API_KEY=your-gemini-api-key" \
-  --set-env-vars="JWT_SECRET=your-64-char-hex-jwt-secret" \
-  --set-env-vars="GOOGLE_CLIENT_ID=your-google-client-id" \
-  --set-env-vars="GOOGLE_CLIENT_SECRET=your-google-client-secret" \
-  --set-env-vars="GOOGLE_AUTH_REDIRECT_URI=https://placeholder-service-url/oauth/auth/callback/google"
+  --add-cloudsql-instances="YOUR_PROJECT_ID:us-central1:YOUR_INSTANCE_NAME" \
+  --set-env-vars="DATABASE_URL=postgres://user:pass@/extenda?host=/cloudsql/YOUR_PROJECT_ID:us-central1:YOUR_INSTANCE_NAME" \
+  --set-env-vars="GEMINI_API_KEY=your_gemini_api_key" \
+  --set-env-vars="JWT_SECRET=your_64_char_hex_secret" \
+  --set-env-vars="GOOGLE_CLIENT_ID=your_google_client_id" \
+  --set-env-vars="GOOGLE_CLIENT_SECRET=your_google_client_secret" \
+  --set-env-vars="GOOGLE_AUTH_REDIRECT_URI=https://YOUR_SERVICE_URL/oauth/auth/callback/google"
+```

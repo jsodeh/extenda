@@ -1,6 +1,6 @@
-# Extenda - AI Executive Assistant
+# Extenda - AI Browser Agent
 
-An AI-powered Chrome extension that automates workflows across 14+ integrations with 219 available tools.
+An AI-powered browser agent that automates workflows across 14+ integrations with 219 available tools.
 
 ## Features
 
@@ -149,6 +149,153 @@ pnpm run build
 pnpm run build --filter api
 pnpm run build --filter extension
 ```
+
+## Production Deployment
+
+This section covers deploying Extenda API to Google Cloud Run with Cloud SQL.
+
+### Prerequisites
+
+1. **Google Cloud CLI** installed and authenticated:
+   ```bash
+   gcloud auth login
+   gcloud config set project YOUR_PROJECT_ID
+   ```
+
+2. **Required APIs enabled**:
+   ```bash
+   gcloud services enable run.googleapis.com sqladmin.googleapis.com cloudbuild.googleapis.com
+   ```
+
+### Step 1: Create Cloud SQL Instance
+
+```bash
+# Create PostgreSQL instance
+gcloud sql instances create extenda \
+  --database-version=POSTGRES_17 \
+  --tier=db-f1-micro \
+  --region=us-central1
+
+# Set postgres user password
+gcloud sql users set-password postgres \
+  --instance=extenda \
+  --password='YOUR_SECURE_PASSWORD'
+
+# Create database
+gcloud sql databases create extenda --instance=extenda
+```
+
+### Step 2: Configure OAuth in Google Cloud Console
+
+1. Go to [APIs & Credentials](https://console.cloud.google.com/apis/credentials)
+2. Create OAuth 2.0 Client ID (Web application)
+3. Add **Authorized redirect URIs**:
+   ```
+   https://YOUR-SERVICE-URL.run.app/oauth/callback/google
+   https://YOUR-SERVICE-URL.run.app/oauth/auth/callback/google
+   ```
+4. Note down `Client ID` and `Client Secret`
+
+### Step 3: Deploy to Cloud Run
+
+Deploy from the **monorepo root** (uses the Dockerfile):
+
+```bash
+# Initial deployment (from project root)
+gcloud run deploy extenda-api \
+  --source=. \
+  --region=us-central1 \
+  --allow-unauthenticated \
+  --add-cloudsql-instances="YOUR_PROJECT_ID:us-central1:extenda" \
+  --set-env-vars="NODE_ENV=production" \
+  --set-env-vars="DATABASE_URL=postgres://postgres:YOUR_PASSWORD@/extenda?host=/cloudsql/YOUR_PROJECT_ID:us-central1:extenda" \
+  --set-env-vars="JWT_SECRET=YOUR_64_CHAR_HEX_SECRET" \
+  --set-env-vars="ENCRYPTION_KEY=YOUR_64_CHAR_HEX_KEY" \
+  --set-env-vars="GEMINI_API_KEY=YOUR_GEMINI_KEY" \
+  --set-env-vars="GOOGLE_CLIENT_ID=YOUR_OAUTH_CLIENT_ID" \
+  --set-env-vars="GOOGLE_CLIENT_SECRET=YOUR_OAUTH_SECRET" \
+  --set-env-vars="GOOGLE_REDIRECT_URI=https://YOUR-SERVICE-URL.run.app/oauth/callback/google" \
+  --set-env-vars="GOOGLE_AUTH_REDIRECT_URI=https://YOUR-SERVICE-URL.run.app/oauth/auth/callback/google"
+```
+
+After first deployment, note the Service URL and update redirect URIs:
+1. Update Google Cloud Console OAuth redirect URIs with actual service URL
+2. Re-deploy or update env vars:
+   ```bash
+   gcloud run services update extenda-api --region=us-central1 \
+     --update-env-vars="GOOGLE_REDIRECT_URI=https://extenda-api-XXXXX.us-central1.run.app/oauth/callback/google" \
+     --update-env-vars="GOOGLE_AUTH_REDIRECT_URI=https://extenda-api-XXXXX.us-central1.run.app/oauth/auth/callback/google"
+   ```
+
+### Step 4: Update Extension for Production
+
+Update the WebSocket URL in `apps/extension/src/lib/websocket.ts`:
+```typescript
+const WS_URL = 'wss://YOUR-SERVICE-URL.run.app';
+```
+
+Rebuild and reload the extension:
+```bash
+pnpm run build --filter extension
+```
+
+### Environment Variables Reference
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `NODE_ENV` | `production` or `development` | Yes |
+| `DATABASE_URL` | PostgreSQL connection string (Cloud SQL socket format) | Yes |
+| `JWT_SECRET` | 64-char hex for JWT signing | Yes |
+| `ENCRYPTION_KEY` | 64-char hex for OAuth token encryption | Yes |
+| `GEMINI_API_KEY` | Google AI API key | Yes |
+| `GOOGLE_CLIENT_ID` | OAuth client ID | Yes |
+| `GOOGLE_CLIENT_SECRET` | OAuth client secret | Yes |
+| `GOOGLE_REDIRECT_URI` | OAuth callback for integrations | Yes |
+| `GOOGLE_AUTH_REDIRECT_URI` | OAuth callback for login | Yes |
+
+Generate secrets:
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+### Updating Deployments
+
+**IMPORTANT**: Use `--update-env-vars` to add/modify without wiping existing vars:
+
+```bash
+# ✅ CORRECT: Adds/updates specific vars only
+gcloud run services update extenda-api --region=us-central1 \
+  --update-env-vars="NEW_VAR=value"
+
+# ❌ WRONG: This wipes ALL existing env vars
+gcloud run deploy extenda-api --source=. \
+  --set-env-vars="ONLY_THIS_VAR=value"
+```
+
+To redeploy code without changing env vars:
+```bash
+gcloud run deploy extenda-api --source=. --region=us-central1
+```
+
+### Viewing Logs
+
+```bash
+# Recent logs
+gcloud logging read 'resource.type=cloud_run_revision AND resource.labels.service_name=extenda-api' \
+  --limit=50 --format="table(timestamp,textPayload)"
+
+# Stream logs
+gcloud beta run services logs tail extenda-api --region=us-central1
+```
+
+### Deployment Checklist
+
+- [ ] Cloud SQL instance created with password set
+- [ ] Database `extenda` created in Cloud SQL
+- [ ] OAuth redirect URIs registered in Google Cloud Console
+- [ ] All environment variables configured
+- [ ] Extension WebSocket URL updated
+- [ ] Extension rebuilt and reloaded
 
 ## API Reference
 
