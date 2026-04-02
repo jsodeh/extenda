@@ -19,7 +19,7 @@ import LoginPage from '../pages/LoginPage';
 import RegisterPage from '../pages/RegisterPage';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { ToastContainer } from '../components/Toast';
-import { useAuth, useUser } from '@clerk/react';
+import { useAuth, useUser } from '@clerk/chrome-extension';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { TextShimmer } from '../components/ui/TextShimmer';
 
@@ -71,8 +71,13 @@ function AppContent() {
             if (isAuthLoaded && user) {
                 const token = await getToken();
                 setAccessToken(token);
+                // Sync to chrome.storage.local for background script
+                if (token) {
+                    chrome.storage.local.set({ accessToken: token });
+                }
             } else {
                 setAccessToken(null);
+                chrome.storage.local.remove(['accessToken']);
             }
         };
         updateToken();
