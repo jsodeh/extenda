@@ -17,10 +17,11 @@
         "history",
         "bookmarks",
         "offscreen",
-        "cookies"
+        "cookies",
+        "identity"
     ],
     "content_security_policy": {
-        "extension_pages": "script-src 'self'; object-src 'self';"
+        "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://*.clerk.accounts.dev https://*.clerk.com;"
     },
     "background": {
         "service_worker": "src/background/index.ts",
