@@ -12,7 +12,9 @@ export default function LoginPage({ onSwitch }: { onSwitch: () => void }) {
 
                 <div className="space-y-4">
                     <Show when="signed-out">
-                        <SignInButton mode="modal">
+                        <SignInButton 
+                            fallbackRedirectUrl={chrome.runtime.getURL('/')}
+                        >
                             <button className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 transition-all duration-200 flex items-center justify-center gap-3 shadow-sm hover:shadow-md">
                                 Sign In to Extenda
                             </button>

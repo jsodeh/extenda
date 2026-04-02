@@ -15,7 +15,12 @@ if (!CLERK_PUBLISHABLE_KEY || CLERK_PUBLISHABLE_KEY.includes('replace_this')) {
 ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
         {CLERK_PUBLISHABLE_KEY && !CLERK_PUBLISHABLE_KEY.includes('replace_this') ? (
-            <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} afterSignOutUrl="/">
+            <ClerkProvider 
+                publishableKey={CLERK_PUBLISHABLE_KEY} 
+                afterSignOutUrl="/"
+                signInFallbackRedirectUrl={chrome.runtime.getURL('/')}
+                signUpFallbackRedirectUrl={chrome.runtime.getURL('/')}
+            >
                 <App />
             </ClerkProvider>
         ) : (
