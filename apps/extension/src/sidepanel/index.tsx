@@ -1,5 +1,10 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+
+if (typeof (window as any).global === 'undefined') {
+    (window as any).global = window;
+}
+
 import App from './App';
 import '../index.css';
 
