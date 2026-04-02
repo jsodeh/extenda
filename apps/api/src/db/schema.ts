@@ -1,16 +1,31 @@
-import { pgTable, uuid, text, timestamp, boolean, jsonb, integer } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, boolean, jsonb, integer, customType } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+
+const pgVector = customType<{ data: number[]; config: { dimensions: number } }>({
+    dataType(config) {
+        return `vector(${config?.dimensions})`;
+    },
+    toDriver(value: number[]) {
+        return JSON.stringify(value);
+    },
+    fromDriver(value: unknown) {
+        return value as number[];
+    },
+});
+
 
 export const users = pgTable('users', {
     id: uuid('id').defaultRandom().primaryKey(),
+    clerkId: text('clerk_id').unique(),
     email: text('email').notNull().unique(),
-    passwordHash: text('password_hash').notNull(),
+    passwordHash: text('password_hash'), // Made optional as Clerk users won't have one
     name: text('name'),
     role: text('role').default('free'),
     googleAccessToken: text('google_access_token'),
     googleRefreshToken: text('google_refresh_token'),
     settings: jsonb('settings').default({}),
     emailVerified: boolean('email_verified').default(false),
+    onboardingCompleted: boolean('onboarding_completed').default(false),
     lastLogin: timestamp('last_login'),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
@@ -81,9 +96,7 @@ export const documents = pgTable('documents', {
     userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
     filename: text('filename').notNull(),
     content: text('content').notNull(),
-    // Using jsonb for embeddings for now to avoid compilation issues if pgvector extension isn't set up
-    // In production, use: vector('embedding', { dimensions: 768 })
-    embedding: jsonb('embedding'),
+    embedding: pgVector('embedding', { dimensions: 768 }),
     metadata: jsonb('metadata').default({}),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),

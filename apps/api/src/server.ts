@@ -16,7 +16,6 @@ import { oauth } from './routes/oauth.js';
 import { authOAuth } from './routes/auth-oauth.js';
 import preferences from './routes/preferences.js';
 import templates from './routes/templates.js';
-import auth from './routes/auth.js';
 import user from './routes/user.js';
 import knowledge from './routes/knowledge.js';
 import { vision } from './routes/vision.js';
@@ -31,7 +30,7 @@ app.get('/', (c) => c.text('Extenda API'));
 app.get('/health', (c) => c.json({ status: 'ok' }));
 
 // Mount routes
-app.route('/api/auth', auth);
+// app.route('/api/auth', auth); // DELETED: Moving to Clerk
 app.route('/api/user', user);
 app.route('/oauth', oauth);
 app.route('/oauth/auth', authOAuth);

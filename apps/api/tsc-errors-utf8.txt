@@ -1,0 +1,3 @@
+﻿src/routes/knowledge.ts(7,29): error TS2307: Cannot find module '../services/auth-service.js' or its corresponding type declarations.
+src/routes/oauth.ts(7,29): error TS2307: Cannot find module '../services/auth-service.js' or its corresponding type declarations.
+src/routes/preferences.ts(3,29): error TS2307: Cannot find module '../services/auth-service.js' or its corresponding type declarations.

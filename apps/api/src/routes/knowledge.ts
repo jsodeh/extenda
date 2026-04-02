@@ -4,7 +4,7 @@ import { processFiles, getFileContents, MulterFile } from '../services/file-proc
 import { users } from '../db/schema.js';
 import { db } from '../db/index.js';
 import { eq } from 'drizzle-orm';
-import { AuthService } from '../services/auth-service.js';
+import { verifyClerkToken } from '../lib/clerk.js';
 import { User } from '@extenda/shared';
 
 type Variables = {
@@ -20,9 +20,11 @@ knowledge.use('*', async (c, next) => {
 
     const token = authHeader.split(' ')[1];
     try {
-        const { userId } = AuthService.verifyToken(token);
+        const payload = await verifyClerkToken(token);
+        if (!payload.sub) return c.json({ error: 'Invalid token' }, 401);
+
         const user = await db.query.users.findFirst({
-            where: eq(users.id, userId as any)
+            where: eq(users.clerkId, payload.sub)
         });
 
         if (!user) return c.json({ error: 'User not found' }, 401);

@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: extenda-api
+    runtime: node
+    plan: free # Free tier as requested
+    region: ohio # Default
+    buildCommand: pnpm install && pnpm run build
+    startCommand: pnpm run start
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false # Set manually in dashboard
+      - key: JWT_SECRET
+        sync: false # Set manually in dashboard
+      - key: ENCRYPTION_KEY
+        sync: false # Set manually in dashboard
+      - key: GEMINI_API_KEY
+        sync: false # Set manually in dashboard
+      - key: GOOGLE_CLIENT_ID
+        sync: false 
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+      - key: GOOGLE_AUTH_REDIRECT_URI
+        sync: false
+    healthCheckPath: /api/debug/info # Updated based on index.ts

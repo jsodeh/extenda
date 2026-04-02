@@ -23,7 +23,7 @@ import app from './server.js';
 import { orchestrator } from './services/orchestrator.js';
 import { intentClassifier } from './services/intent-classifier.js';
 import { generateText } from './lib/gemini.js';
-import { AuthService } from './services/auth-service.js';
+import { verifyClerkToken, clerkClient } from './lib/clerk.js';
 import { db } from './db/index.js';
 import { users, executions, workflows } from './db/schema.js';
 import { oauthManager } from './services/oauth-manager.js';
@@ -36,6 +36,19 @@ console.log('Environment:', process.env.NODE_ENV);
 console.log('PORT:', process.env.PORT);
 
 const port = Number(process.env.PORT) || 3000;
+
+app.use('*', cors({
+    origin: (origin) => {
+        const allowed = [
+            'chrome-extension://cdbfohlcjpcmejchgkgookcoeffniggc',
+            'http://localhost:3000',
+            'http://localhost:5173'
+        ];
+        if (!origin || allowed.includes(origin)) return origin;
+        return allowed[0]; // Fallback
+    },
+    credentials: true,
+}));
 
 // Migrations handled by runMigrations() in serve callback or elsewhere
 // console.log('Skipping top-level migration check...');
@@ -77,6 +90,8 @@ try {
 }
 
 
+
+
 // Socket Authentication Middleware
 io.use(async (socket, next) => {
     try {
@@ -84,27 +99,42 @@ io.use(async (socket, next) => {
 
         if (!token) {
             console.log('Socket connection rejected: No token');
-            return next(new Error('Authentication error'));
+            return next(new Error('Authentication error - No token provided'));
         }
 
-        const { userId } = AuthService.verifyToken(token);
+        // Verify Clerk JWT
+        const payload = await verifyClerkToken(token);
+        const clerkUserId = payload.sub;
 
-        // Fetch full user with tokens from DB
-        const user = await db.query.users.findFirst({
-            where: eq(users.id, userId as any) // Cast if needed for UUID/Int mismatch, schema uses UUID
+        // Fetch user from DB by clerkId
+        let user = await db.query.users.findFirst({
+            where: eq(users.clerkId, clerkUserId)
         });
 
         if (!user) {
-            console.log('Socket connection rejected: User not found');
-            return next(new Error('Authentication error'));
+            console.log('Auto-provisioning new user for Clerk ID:', clerkUserId);
+            // Fetch profile data from Clerk
+            const clerkUser = await clerkClient.users.getUser(clerkUserId!);
+            const email = clerkUser.emailAddresses[0]?.emailAddress;
+            const name = clerkUser.firstName ? `${clerkUser.firstName} ${clerkUser.lastName || ''}`.trim() : (email?.split('@')[0] || 'User');
+
+            // Create user record
+            const [newUser] = await db.insert(users).values({
+                clerkId: clerkUserId,
+                email: email || '',
+                name: name,
+                onboardingCompleted: false
+            }).returning();
+            
+            user = newUser;
         }
 
         // Attach user to socket
         (socket as any).user = user;
         next();
     } catch (err) {
-        console.log('Socket connection rejected:', err);
-        next(new Error('Authentication error'));
+        console.error('Socket connection rejected (Clerk Error):', err);
+        next(new Error('Authentication error - Invalid Clerk session'));
     }
 });
 
@@ -432,7 +462,15 @@ app.get('/api/history', async (c) => {
         if (!authHeader) return c.json({ error: 'Unauthorized' }, 401);
 
         const token = authHeader.split(' ')[1];
-        const { userId } = AuthService.verifyToken(token);
+        const payload = await verifyClerkToken(token);
+        const clerkUserId = payload.sub;
+        if (!clerkUserId) return c.json({ error: 'Unauthorized' }, 401);
+
+        const dbUser = await db.query.users.findFirst({
+            where: eq(users.clerkId, clerkUserId)
+        });
+        if (!dbUser) return c.json({ error: 'User not found' }, 404);
+        const userId = dbUser.id;
 
         const userExecutions = await db.query.executions.findMany({
             where: eq(executions.userId, userId as any),
@@ -488,8 +526,15 @@ app.get('/api/chat/sessions', async (c) => {
         if (!authHeader) return c.json({ error: 'Unauthorized' }, 401);
 
         const token = authHeader.split(' ')[1];
-        const { userId } = AuthService.verifyToken(token);
+        const payload = await verifyClerkToken(token);
+        const clerkUserId = payload.sub;
+        if (!clerkUserId) return c.json({ error: 'Unauthorized' }, 401);
 
+        const dbUser = await db.query.users.findFirst({
+            where: eq(users.clerkId, clerkUserId)
+        });
+        if (!dbUser) return c.json({ error: 'User not found' }, 404);
+        const userId = dbUser.id;
         const sessions = await chatService.getSessions(userId);
         return c.json(sessions);
     } catch (error) {
@@ -518,8 +563,15 @@ app.post('/api/chat/sessions', async (c) => {
         if (!authHeader) return c.json({ error: 'Unauthorized' }, 401);
 
         const token = authHeader.split(' ')[1];
-        const { userId } = AuthService.verifyToken(token);
+        const payload = await verifyClerkToken(token);
+        const clerkUserId = payload.sub;
+        if (!clerkUserId) return c.json({ error: 'Unauthorized' }, 401);
 
+        const dbUser = await db.query.users.findFirst({
+            where: eq(users.clerkId, clerkUserId)
+        });
+        if (!dbUser) return c.json({ error: 'User not found' }, 404);
+        const userId = dbUser.id;
         const session = await chatService.createSession(userId);
         return c.json(session);
     } catch (error) {

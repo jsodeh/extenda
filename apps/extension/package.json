@@ -11,6 +11,7 @@
         "test:watch": "jest --watch"
     },
     "dependencies": {
+        "@clerk/react": "^6.1.4",
         "@extenda/shared": "workspace:*",
         "clsx": "^2.1.1",
         "framer-motion": "^12.23.25",

@@ -19,7 +19,7 @@ import LoginPage from '../pages/LoginPage';
 import RegisterPage from '../pages/RegisterPage';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { ToastContainer } from '../components/Toast';
-import { AuthProvider, useAuth } from '../contexts/AuthContext';
+import { useAuth, useUser } from '@clerk/react';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { TextShimmer } from '../components/ui/TextShimmer';
 
@@ -55,7 +55,28 @@ interface WorkflowStep {
 }
 
 function AppContent() {
-    const { user, logout, isLoading, accessToken } = useAuth();
+    const { isLoaded: isUserLoaded, user } = useUser();
+    const { getToken, signOut, isLoaded: isAuthLoaded } = useAuth();
+    const [accessToken, setAccessToken] = useState<string | null>(null);
+
+    const isLoading = !isUserLoaded || !isAuthLoaded;
+
+    const logout = async () => {
+        await signOut();
+    };
+
+    // Keep accessToken in sync with Clerk session
+    useEffect(() => {
+        const updateToken = async () => {
+            if (isAuthLoaded && user) {
+                const token = await getToken();
+                setAccessToken(token);
+            } else {
+                setAccessToken(null);
+            }
+        };
+        updateToken();
+    }, [user, isAuthLoaded, getToken]);
     const [currentPage, setCurrentPage] = useState<Page>('chat');
     const [messages, setMessages] = useState<Message[]>([]);
     const [status, setStatus] = useState('Disconnected');
@@ -647,10 +668,8 @@ function AppContent() {
 
 export default function App() {
     return (
-        <AuthProvider>
-            <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
-                <AppContent />
-            </ThemeProvider>
-        </AuthProvider>
+        <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
+            <AppContent />
+        </ThemeProvider>
     );
 }

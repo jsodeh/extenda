@@ -1,6 +1,9 @@
 import { Hono } from 'hono';
 import { PreferencesService } from '../services/preferences-service.js';
-import { AuthService } from '../services/auth-service.js';
+import { verifyClerkToken } from '../lib/clerk.js';
+import { db } from '../db/index.js';
+import { users } from '../db/schema.js';
+import { eq } from 'drizzle-orm';
 
 const preferences = new Hono();
 
@@ -14,7 +17,14 @@ preferences.get('/', async (c) => {
         if (!authHeader) return c.json({ error: 'Unauthorized' }, 401);
 
         const token = authHeader.split(' ')[1];
-        const { userId } = AuthService.verifyToken(token);
+        const payload = await verifyClerkToken(token);
+        if (!payload.sub) return c.json({ error: 'Unauthorized' }, 401);
+
+        const dbUser = await db.query.users.findFirst({
+            where: eq(users.clerkId, payload.sub)
+        });
+        if (!dbUser) return c.json({ error: 'User not found' }, 404);
+        const userId = dbUser.id;
 
         const prefs = await PreferencesService.get(userId);
 
@@ -46,7 +56,14 @@ preferences.put('/', async (c) => {
         if (!authHeader) return c.json({ error: 'Unauthorized' }, 401);
 
         const token = authHeader.split(' ')[1];
-        const { userId } = AuthService.verifyToken(token);
+        const payload = await verifyClerkToken(token);
+        if (!payload.sub) return c.json({ error: 'Unauthorized' }, 401);
+
+        const dbUser = await db.query.users.findFirst({
+            where: eq(users.clerkId, payload.sub)
+        });
+        if (!dbUser) return c.json({ error: 'User not found' }, 404);
+        const userId = dbUser.id;
 
         const body = await c.req.json();
 
@@ -76,7 +93,14 @@ preferences.patch('/', async (c) => {
         if (!authHeader) return c.json({ error: 'Unauthorized' }, 401);
 
         const token = authHeader.split(' ')[1];
-        const { userId } = AuthService.verifyToken(token);
+        const payload = await verifyClerkToken(token);
+        if (!payload.sub) return c.json({ error: 'Unauthorized' }, 401);
+
+        const dbUser = await db.query.users.findFirst({
+            where: eq(users.clerkId, payload.sub)
+        });
+        if (!dbUser) return c.json({ error: 'User not found' }, 404);
+        const userId = dbUser.id;
 
         const body = await c.req.json();
         const existing = await PreferencesService.get(userId);

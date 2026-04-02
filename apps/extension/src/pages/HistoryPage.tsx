@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { MessageSquare, Clock, ArrowRight, ArrowLeft } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '@clerk/react';
 
 interface ChatSession {
     id: string;
@@ -15,29 +15,28 @@ interface HistoryPageProps {
 }
 
 export default function HistoryPage({ onSelectSession, onBack }: HistoryPageProps) {
-    const { accessToken, isLoading: authLoading } = useAuth();
+    const { getToken, isLoaded } = useAuth();
     const [sessions, setSessions] = useState<ChatSession[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (authLoading) return;
-
-        if (!accessToken) {
-            setLoading(false);
-            return;
+        if (isLoaded) {
+            loadSessions();
         }
-
-        loadSessions();
-    }, [accessToken, authLoading]);
+    }, [isLoaded]);
 
     const loadSessions = async () => {
-        if (!accessToken) return;
         try {
+            const token = await getToken();
+            if (!token) {
+                setLoading(false);
+                return;
+            }
             const API_URL = 'https://extenda-api-604583941288.us-central1.run.app';
 
             const response = await fetch(`${API_URL}/api/chat/sessions`, {
                 headers: {
-                    'Authorization': `Bearer ${accessToken}`
+                    'Authorization': `Bearer ${token}`
                 }
             });
 

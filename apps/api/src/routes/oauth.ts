@@ -4,7 +4,7 @@ import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import crypto from 'crypto';
-import { AuthService } from '../services/auth-service.js';
+import { verifyClerkToken } from '../lib/clerk.js';
 
 const oauth = new Hono();
 
@@ -201,8 +201,8 @@ oauth.get('/callback/:provider', async (c) => {
         });
 
         // --- Generate App Tokens ---
-        // We use AuthService to generate our own JWTs for the session
-        const tokens = await AuthService.generateTokens(userId);
+        // (Delegated to Clerk)
+        const tokens = null;
 
         // Redirect to success page or close popup
         // Pass the REAL user data and tokens back
@@ -240,8 +240,13 @@ oauth.get('/status', async (c) => {
     const token = authHeader.split(' ')[1];
     let userId: string;
     try {
-        const payload = AuthService.verifyToken(token);
-        userId = payload.userId;
+        const payload = await verifyClerkToken(token);
+        if (!payload.sub) return c.json({ error: 'Unauthorized' }, 401);
+        const dbUser = await db.query.users.findFirst({
+            where: eq(users.clerkId, payload.sub)
+        });
+        if (!dbUser) return c.json({ error: 'User not found' }, 404);
+        userId = dbUser.id;
     } catch (e) {
         return c.json({ error: 'Invalid token' }, 401);
     }
@@ -267,8 +272,13 @@ oauth.delete('/disconnect/:provider', async (c) => {
     const token = authHeader.split(' ')[1];
     let userId: string;
     try {
-        const payload = AuthService.verifyToken(token);
-        userId = payload.userId;
+        const payload = await verifyClerkToken(token);
+        if (!payload.sub) return c.json({ error: 'Unauthorized' }, 401);
+        const dbUser = await db.query.users.findFirst({
+            where: eq(users.clerkId, payload.sub)
+        });
+        if (!dbUser) return c.json({ error: 'User not found' }, 404);
+        userId = dbUser.id;
     } catch (e) {
         return c.json({ error: 'Invalid token' }, 401);
     }
