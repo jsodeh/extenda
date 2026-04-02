@@ -12,7 +12,6 @@
     },
     "dependencies": {
         "@clerk/chrome-extension": "^3.1.6",
-        "@clerk/react": "^6.1.4",
         "@extenda/shared": "workspace:*",
         "clsx": "^2.1.1",
         "framer-motion": "^12.23.25",

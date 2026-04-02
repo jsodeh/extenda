@@ -1,4 +1,4 @@
-import { SignInButton, Show } from "@clerk/react";
+import { SignInButton, Show } from "@clerk/chrome-extension";
 import { AlertCircle } from 'lucide-react';
 
 export default function LoginPage({ onSwitch }: { onSwitch: () => void }) {

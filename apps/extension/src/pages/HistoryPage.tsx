@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { MessageSquare, Clock, ArrowRight, ArrowLeft } from 'lucide-react';
-import { useAuth } from '@clerk/react';
+import { useAuth } from '@clerk/chrome-extension';
 
 interface ChatSession {
     id: string;

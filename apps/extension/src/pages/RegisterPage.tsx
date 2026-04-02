@@ -1,4 +1,4 @@
-import { SignUpButton, Show } from "@clerk/react";
+import { SignUpButton, Show } from "@clerk/chrome-extension";
 
 export default function RegisterPage({ onSwitch }: { onSwitch: () => void }) {
     return (
