@@ -1,8 +1,14 @@
+import { createClerkClient } from '@clerk/chrome-extension/background';
 import { bgWsClient } from '../lib/websocket-background';
 import { handleTabManager } from '../lib/tools/tab-manager';
 import { handleScreenshot } from '../lib/tools/screenshot';
 import { handleSmartClick } from '../lib/tools/smart-click';
 import { ToolExecutionRequest } from '@extenda/shared';
+
+// Initialize Clerk in background
+const clerkPromise = createClerkClient({
+    publishableKey: import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
+});
 
 // Content script tool types
 const CONTENT_SCRIPT_TOOLS = ['DOMReader', 'FormFiller', 'GmailScraper'];
@@ -114,42 +120,47 @@ const handleToolExecution = async (data: ToolExecutionRequest) => {
 // Track if listener is registered to prevent duplicates
 let toolExecuteListenerRegistered = false;
 
-// Initialize connection with auth
-const initConnection = () => {
-    chrome.storage.local.get(['accessToken'], (result) => {
-        const token = result.accessToken;
-        if (token) {
-            console.log('[Background] Connecting with token');
-            bgWsClient.connect(token);
+// Initialize connection with Clerk
+const initConnection = async () => {
+    try {
+        console.log('[Background] Initializing Clerk session sync...');
+        
+        const clerk = await clerkPromise;
+        
+        // Listen for session changes
+        clerk.addListener(async (resources) => {
+            const { session } = resources;
+            if (session) {
+                console.log('[Background] Clerk session active, fetching token...');
+                try {
+                    const token = await session.getToken();
+                    if (token) {
+                        console.log('[Background] Connecting WebSocket with Clerk token');
+                        bgWsClient.connect(token);
 
-            // Register tool execution listener ONCE
-            if (!toolExecuteListenerRegistered) {
-                bgWsClient.on('tool:execute', handleToolExecution);
-                toolExecuteListenerRegistered = true;
-                console.log('[Background] Registered tool:execute listener');
+                        // Register tool execution listener ONCE
+                        if (!toolExecuteListenerRegistered) {
+                            bgWsClient.on('tool:execute', handleToolExecution);
+                            toolExecuteListenerRegistered = true;
+                            console.log('[Background] Registered tool:execute listener');
+                        }
+                    }
+                } catch (tokenErr) {
+                    console.error('[Background] Failed to get Clerk token:', tokenErr);
+                }
+            } else {
+                console.log('[Background] No active Clerk session, disconnecting...');
+                bgWsClient.disconnect();
             }
-        } else {
-            console.log('[Background] Waiting for token...');
-        }
-    });
+        });
+    } catch (error) {
+        console.error('[Background] Clerk initialization failed:', error);
+    }
 };
 
 initConnection();
 
-// Listen for token changes
-chrome.storage.onChanged.addListener((changes) => {
-    if (changes.accessToken) {
-        const newToken = changes.accessToken.newValue;
-        if (newToken) {
-            console.log('[Background] Token updated, reconnecting');
-            bgWsClient.connect(newToken);
-            // Listener already registered via initConnection or previous call
-        } else {
-            console.log('[Background] Token removed, disconnecting');
-            bgWsClient.disconnect();
-        }
-    }
-});
+// Removed manual storage listeners as Clerk handles this now via addListener
 
 // Listen for tab updates to track context
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
