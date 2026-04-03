@@ -5,6 +5,10 @@ if (typeof (window as any).global === 'undefined') {
     (window as any).global = window;
 }
 
+if (typeof (window as any).process === 'undefined') {
+    (window as any).process = { env: { NODE_ENV: import.meta.env.MODE } };
+}
+
 import App from './App';
 import '../index.css';
 
@@ -18,7 +22,7 @@ if (!CLERK_PUBLISHABLE_KEY || CLERK_PUBLISHABLE_KEY.includes('replace_this')) {
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-    <React.StrictMode>
+    <>
         {CLERK_PUBLISHABLE_KEY && !CLERK_PUBLISHABLE_KEY.includes('replace_this') ? (
             <ClerkProvider 
                 publishableKey={CLERK_PUBLISHABLE_KEY} 
@@ -34,5 +38,5 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                 <p>Please check the console for instructions on how to set up your Clerk Publishable Key.</p>
             </div>
         )}
-    </React.StrictMode>
+    </>
 );
