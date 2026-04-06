@@ -1,34 +1,20 @@
 import { Hono } from 'hono';
-import { verifyClerkToken, clerkClient } from '../lib/clerk.js';
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
+import { authMiddleware, AuthEnv } from '../lib/auth.js';
 
-const user = new Hono();
+const user = new Hono<AuthEnv>();
+
+// Apply auth middleware to all routes in this router
+user.use('*', authMiddleware);
 
 /**
  * GET /api/user/export
  */
 user.get('/export', async (c) => {
     try {
-        const authHeader = c.req.header('Authorization');
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return c.json({ error: 'Unauthorized' }, 401);
-        }
-
-        const token = authHeader.substring(7);
-        const payload = await verifyClerkToken(token);
-        const clerkUserId = payload.sub;
-
-        if (!clerkUserId) return c.json({ error: 'Invalid token' }, 401);
-
-        // Get user from our DB
-        const dbUser = await db.query.users.findFirst({
-            where: eq(users.clerkId, clerkUserId)
-        });
-
-        if (!dbUser) return c.json({ error: 'User not found in local database' }, 404);
-
+        const dbUser = c.get('user');
         const userId = dbUser.id;
 
         // Export all user data
@@ -53,29 +39,10 @@ user.get('/export', async (c) => {
  */
 user.delete('/account', async (c) => {
     try {
-        const authHeader = c.req.header('Authorization');
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return c.json({ error: 'Unauthorized' }, 401);
-        }
-
-        const token = authHeader.substring(7);
-        const payload = await verifyClerkToken(token);
-        const clerkUserId = payload.sub;
-
-        if (!clerkUserId) return c.json({ error: 'Invalid token' }, 401);
-
-        // Get user from our DB
-        const dbUser = await db.query.users.findFirst({
-            where: eq(users.clerkId, clerkUserId)
-        });
-
-        if (!dbUser) return c.json({ error: 'User not found' }, 404);
+        const dbUser = c.get('user');
 
         // Cascade delete all user data locally
         await deleteUserAccount(dbUser.id);
-
-        // Also delete from Clerk
-        await clerkClient.users.deleteUser(clerkUserId);
 
         return c.json({ success: true, message: 'Account deleted successfully' });
     } catch (error) {

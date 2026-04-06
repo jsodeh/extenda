@@ -1,48 +1,20 @@
 import { Hono } from 'hono';
 import { knowledgeBase } from '../services/knowledge-base.js';
 import { processFiles, getFileContents, MulterFile } from '../services/file-processor.js';
-import { users } from '../db/schema.js';
-import { db } from '../db/index.js';
-import { eq } from 'drizzle-orm';
-import { verifyClerkToken } from '../lib/clerk.js';
-import { User } from '@extenda/shared';
+import { authMiddleware, AuthEnv } from '../lib/auth.js';
 
-type Variables = {
-    user: User;
-}
+const knowledge = new Hono<AuthEnv>();
 
-const knowledge = new Hono<{ Variables: Variables }>();
-
-// Middleware to verify token for HTTP requests (simplified from socket)
-knowledge.use('*', async (c, next) => {
-    const authHeader = c.req.header('Authorization');
-    if (!authHeader) return c.json({ error: 'No token provided' }, 401);
-
-    const token = authHeader.split(' ')[1];
-    try {
-        const payload = await verifyClerkToken(token);
-        if (!payload.sub) return c.json({ error: 'Invalid token' }, 401);
-
-        const user = await db.query.users.findFirst({
-            where: eq(users.clerkId, payload.sub)
-        });
-
-        if (!user) return c.json({ error: 'User not found' }, 401);
-
-        c.set('user', user as any); // Cast as DB user might differ slightly from Shared User or just to be safe
-        await next();
-    } catch (err) {
-        return c.json({ error: 'Invalid token' }, 401);
-    }
-});
+// Apply auth middleware to all routes in this router
+knowledge.use('*', authMiddleware);
 
 knowledge.post('/upload', async (c) => {
     const user = c.get('user');
     try {
         const body = await c.req.parseBody();
-        const file = body['file'] as File;
+        const file = body['file'] as any; // Hono's parseBody returns File or string
 
-        if (!file) {
+        if (!file || typeof file === 'string') {
             return c.json({ error: 'No file uploaded' }, 400);
         }
 
@@ -109,4 +81,3 @@ knowledge.post('/process-files', async (c) => {
 });
 
 export default knowledge;
-

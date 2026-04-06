@@ -12,6 +12,7 @@ dotenv.config({ path: envPath });
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
+import { authMiddleware, AuthEnv } from './lib/auth.js';
 import { oauth } from './routes/oauth.js';
 import { authOAuth } from './routes/auth-oauth.js';
 import preferences from './routes/preferences.js';
@@ -21,7 +22,7 @@ import knowledge from './routes/knowledge.js';
 import { vision } from './routes/vision.js';
 import config from './routes/config.js';
 
-const app = new Hono();
+const app = new Hono<AuthEnv>();
 
 app.use('*', logger());
 app.use('*', cors());

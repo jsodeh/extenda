@@ -19,7 +19,7 @@ import LoginPage from '../pages/LoginPage';
 import RegisterPage from '../pages/RegisterPage';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { ToastContainer } from '../components/Toast';
-import { useAuth, useUser } from '@clerk/chrome-extension';
+import { useAuth } from '../contexts/auth-context';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { TextShimmer } from '../components/ui/TextShimmer';
 
@@ -55,33 +55,22 @@ interface WorkflowStep {
 }
 
 function AppContent() {
-    const { isLoaded: isUserLoaded, user } = useUser();
-    const { getToken, signOut, isLoaded: isAuthLoaded } = useAuth();
-    const [accessToken, setAccessToken] = useState<string | null>(null);
+    const { user, accessToken, signOut, isLoaded } = useAuth();
 
-    const isLoading = !isUserLoaded || !isAuthLoaded;
+    const isLoading = !isLoaded;
 
     const logout = async () => {
         await signOut();
     };
 
-    // Keep accessToken in sync with Clerk session
+    // Keep storage in sync with accessToken (handled by AuthProvider now, but we keep it here for background script)
     useEffect(() => {
-        const updateToken = async () => {
-            if (isAuthLoaded && user) {
-                const token = await getToken();
-                setAccessToken(token);
-                // Sync to chrome.storage.local for background script
-                if (token) {
-                    chrome.storage.local.set({ accessToken: token });
-                }
-            } else {
-                setAccessToken(null);
-                chrome.storage.local.remove(['accessToken']);
-            }
-        };
-        updateToken();
-    }, [user, isAuthLoaded, getToken]);
+        if (accessToken) {
+            chrome.storage.local.set({ accessToken });
+        } else {
+            chrome.storage.local.remove(['accessToken']);
+        }
+    }, [accessToken]);
     const [currentPage, setCurrentPage] = useState<Page>('chat');
     const [messages, setMessages] = useState<Message[]>([]);
     const [status, setStatus] = useState('Disconnected');

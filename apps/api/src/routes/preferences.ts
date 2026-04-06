@@ -1,11 +1,11 @@
 import { Hono } from 'hono';
 import { PreferencesService } from '../services/preferences-service.js';
-import { verifyClerkToken } from '../lib/clerk.js';
-import { db } from '../db/index.js';
-import { users } from '../db/schema.js';
-import { eq } from 'drizzle-orm';
+import { authMiddleware, AuthEnv } from '../lib/auth.js';
 
-const preferences = new Hono();
+const preferences = new Hono<AuthEnv>();
+
+// Apply auth middleware to all routes in this router
+preferences.use('*', authMiddleware);
 
 /**
  * GET /api/preferences
@@ -13,17 +13,7 @@ const preferences = new Hono();
  */
 preferences.get('/', async (c) => {
     try {
-        const authHeader = c.req.header('Authorization');
-        if (!authHeader) return c.json({ error: 'Unauthorized' }, 401);
-
-        const token = authHeader.split(' ')[1];
-        const payload = await verifyClerkToken(token);
-        if (!payload.sub) return c.json({ error: 'Unauthorized' }, 401);
-
-        const dbUser = await db.query.users.findFirst({
-            where: eq(users.clerkId, payload.sub)
-        });
-        if (!dbUser) return c.json({ error: 'User not found' }, 404);
+        const dbUser = c.get('user');
         const userId = dbUser.id;
 
         const prefs = await PreferencesService.get(userId);
@@ -52,17 +42,7 @@ preferences.get('/', async (c) => {
  */
 preferences.put('/', async (c) => {
     try {
-        const authHeader = c.req.header('Authorization');
-        if (!authHeader) return c.json({ error: 'Unauthorized' }, 401);
-
-        const token = authHeader.split(' ')[1];
-        const payload = await verifyClerkToken(token);
-        if (!payload.sub) return c.json({ error: 'Unauthorized' }, 401);
-
-        const dbUser = await db.query.users.findFirst({
-            where: eq(users.clerkId, payload.sub)
-        });
-        if (!dbUser) return c.json({ error: 'User not found' }, 404);
+        const dbUser = c.get('user');
         const userId = dbUser.id;
 
         const body = await c.req.json();
@@ -89,17 +69,7 @@ preferences.put('/', async (c) => {
  */
 preferences.patch('/', async (c) => {
     try {
-        const authHeader = c.req.header('Authorization');
-        if (!authHeader) return c.json({ error: 'Unauthorized' }, 401);
-
-        const token = authHeader.split(' ')[1];
-        const payload = await verifyClerkToken(token);
-        if (!payload.sub) return c.json({ error: 'Unauthorized' }, 401);
-
-        const dbUser = await db.query.users.findFirst({
-            where: eq(users.clerkId, payload.sub)
-        });
-        if (!dbUser) return c.json({ error: 'User not found' }, 404);
+        const dbUser = c.get('user');
         const userId = dbUser.id;
 
         const body = await c.req.json();

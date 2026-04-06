@@ -4,9 +4,9 @@ import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import crypto from 'crypto';
-import { verifyClerkToken } from '../lib/clerk.js';
+import { authMiddleware, AuthEnv } from '../lib/auth.js';
 
-const oauth = new Hono();
+const oauth = new Hono<AuthEnv>();
 
 interface OAuthProvider {
     authUrl: string;
@@ -105,13 +105,6 @@ oauth.get('/callback/:provider', async (c) => {
         return c.json({ error: 'No authorization code provided' }, 400);
     }
 
-    // Verify state (CSRF protection)
-    // In production, retrieve from session/cookie
-    // const storedState = getStateFromSession(c);
-    // if (state !== storedState) {
-    //     return c.json({ error: 'Invalid state parameter' }, 400);
-    // }
-
     try {
         // Exchange authorization code for access token
         const tokenResponse = await fetch(config.tokenUrl, {
@@ -155,28 +148,21 @@ oauth.get('/callback/:provider', async (c) => {
         }
 
         // --- Find or Create User ---
-        // Find by email
         const existingUsers = await db.select().from(users).where(eq(users.email, email)).limit(1);
-        let user: any; // User type inferred from drizzle
+        let user: any;
         let userId: string;
 
         if (existingUsers.length > 0) {
             user = existingUsers[0];
             userId = user.id;
-
-            // Update user tokens/metadata if needed
-            // For now, we trust the flow.
         } else {
-            // Create user
-            // Password hash is required but irrelevant for OAuth users, set a random unguessable string
-            const randomPassword = crypto.randomBytes(32).toString('hex'); // Placeholder
-
+            const randomPassword = crypto.randomBytes(32).toString('hex');
             const newUsers = await db.insert(users).values({
                 email,
                 name,
-                passwordHash: randomPassword, // Not used for OAuth
+                passwordHash: randomPassword,
                 role: 'free',
-                emailVerified: true, // Google verified
+                emailVerified: true,
                 settings: {},
             }).returning();
 
@@ -200,12 +186,6 @@ oauth.get('/callback/:provider', async (c) => {
             }
         });
 
-        // --- Generate App Tokens ---
-        // (Delegated to Clerk)
-        const tokens = null;
-
-        // Redirect to success page or close popup
-        // Pass the REAL user data and tokens back
         return c.html(`
             <html>
                 <body>
@@ -216,7 +196,7 @@ oauth.get('/callback/:provider', async (c) => {
                             type: 'oauth_success', 
                             provider: '${provider}',
                             user: ${JSON.stringify({ id: user.id, email: user.email, name: user.name, role: user.role })},
-                            tokens: ${JSON.stringify(tokens)}
+                            tokens: null
                         }, '*');
                         window.close();
                     </script>
@@ -230,29 +210,19 @@ oauth.get('/callback/:provider', async (c) => {
 });
 
 /**
+ * Restricted routes below
+ */
+oauth.use('/status', authMiddleware);
+oauth.use('/disconnect/*', authMiddleware);
+
+/**
  * GET /oauth/status
  * Get list of connected providers for current user
  */
 oauth.get('/status', async (c) => {
-    const authHeader = c.req.header('Authorization');
-    if (!authHeader) return c.json({ error: 'Unauthorized' }, 401);
-
-    const token = authHeader.split(' ')[1];
-    let userId: string;
+    const user = c.get('user');
     try {
-        const payload = await verifyClerkToken(token);
-        if (!payload.sub) return c.json({ error: 'Unauthorized' }, 401);
-        const dbUser = await db.query.users.findFirst({
-            where: eq(users.clerkId, payload.sub)
-        });
-        if (!dbUser) return c.json({ error: 'User not found' }, 404);
-        userId = dbUser.id;
-    } catch (e) {
-        return c.json({ error: 'Invalid token' }, 401);
-    }
-
-    try {
-        const providers = await oauthManager.getConnectedProviders(userId);
+        const providers = await oauthManager.getConnectedProviders(user.id);
         return c.json({ connectedProviders: providers });
     } catch (error) {
         console.error('Failed to get OAuth status:', error);
@@ -265,26 +235,11 @@ oauth.get('/status', async (c) => {
  * Disconnect OAuth provider
  */
 oauth.delete('/disconnect/:provider', async (c) => {
+    const user = c.get('user');
     const provider = c.req.param('provider');
-    const authHeader = c.req.header('Authorization');
-    if (!authHeader) return c.json({ error: 'Unauthorized' }, 401);
-
-    const token = authHeader.split(' ')[1];
-    let userId: string;
-    try {
-        const payload = await verifyClerkToken(token);
-        if (!payload.sub) return c.json({ error: 'Unauthorized' }, 401);
-        const dbUser = await db.query.users.findFirst({
-            where: eq(users.clerkId, payload.sub)
-        });
-        if (!dbUser) return c.json({ error: 'User not found' }, 404);
-        userId = dbUser.id;
-    } catch (e) {
-        return c.json({ error: 'Invalid token' }, 401);
-    }
 
     try {
-        await oauthManager.deleteCredentials(userId, provider);
+        await oauthManager.deleteCredentials(user.id, provider);
         return c.json({ success: true });
     } catch (error) {
         console.error('Failed to disconnect provider:', error);
