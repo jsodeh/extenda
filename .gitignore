@@ -5,6 +5,7 @@ apps/**/node_modules/
 # Build outputs
 dist/
 apps/**/dist/
+packages/**/dist/
 *.tsbuildinfo
 
 # Turbo

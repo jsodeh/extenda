@@ -1,14 +1,11 @@
-
-// Load environment variables FIRST before any other imports
-import dotenv from 'dotenv';
+import './env.js'; // Ensure env vars are loaded before other imports
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 
-// Load env before other imports
+// Still getting __dirname for app level use, but dotenv is already handled
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const envPath = resolve(__dirname, '../.env');
-dotenv.config({ path: envPath });
 
 // Imports
 import { randomUUID } from 'node:crypto';
