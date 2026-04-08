@@ -18,7 +18,8 @@ class WebSocketClient {
 
         this.currentToken = token;
 
-        this.socket = io('https://extenda-api-604583941288.us-central1.run.app', {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+        this.socket = io(apiUrl, {
             transports: ['polling', 'websocket'],
             reconnection: true,
             reconnectionAttempts: 5,
