@@ -16,9 +16,7 @@ const pgVector = customType<{ data: number[]; config: { dimensions: number } }>(
 
 export const users = pgTable('users', {
     id: uuid('id').defaultRandom().primaryKey(),
-    clerkId: text('clerk_id').unique(),
     email: text('email').notNull().unique(),
-    passwordHash: text('password_hash'), // Made optional as Clerk users won't have one
     name: text('name'),
     role: text('role').default('free'),
     googleAccessToken: text('google_access_token'),
