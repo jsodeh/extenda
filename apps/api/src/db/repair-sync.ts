@@ -17,7 +17,9 @@ export async function repairDatabaseSync() {
             sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT false`,
             sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP`,
             sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false`,
-            sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS settings JSONB DEFAULT '{}'::jsonb`
+            sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS settings JSONB DEFAULT '{}'::jsonb`,
+            // Drop NOT NULL constraint on password_hash - OAuth users don't have passwords
+            sql`ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL`,
         ];
 
         for (const query of repairQueries) {
