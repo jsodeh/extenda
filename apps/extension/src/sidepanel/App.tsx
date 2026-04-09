@@ -91,7 +91,8 @@ function AppContent() {
             if (!accessToken) return;
 
             try {
-                const response = await fetch('https://extenda-api-604583941288.us-central1.run.app/api/config/voice', {
+                const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+                const response = await fetch(`${API_URL}/api/config/voice`, {
                     headers: {
                         'Authorization': `Bearer ${accessToken}`
                     }
@@ -468,7 +469,8 @@ function AppContent() {
                 const formData = new FormData();
                 files.forEach(file => formData.append('files', file));
 
-                const uploadRes = await fetch('https://extenda-api-604583941288.us-central1.run.app/api/knowledge/process-files', {
+                const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+                const uploadRes = await fetch(`${API_URL}/api/knowledge/process-files`, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${accessToken}`
@@ -522,7 +524,7 @@ function AppContent() {
             setCurrentPage('chat');
             setMessages([]); // Clear while loading
 
-            const API_URL = 'https://extenda-api-604583941288.us-central1.run.app';
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
             const response = await fetch(`${API_URL}/api/chat/sessions/${sessionId}`, {
                 headers: {
                     'Authorization': `Bearer ${accessToken}`

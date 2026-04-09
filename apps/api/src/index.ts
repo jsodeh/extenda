@@ -40,11 +40,12 @@ const port = Number(process.env.PORT) || 3000;
 app.use('*', cors({
     origin: (origin) => {
         const allowed = [
-            'chrome-extension://cdbfohlcjpcmejchgkgookcoeffniggc',
             'http://localhost:3000',
             'http://localhost:5173'
         ];
-        if (!origin || allowed.includes(origin)) return origin;
+        if (!origin || origin.startsWith('chrome-extension://') || allowed.includes(origin)) {
+            return origin;
+        }
         return allowed[0]; // Fallback
     },
     credentials: true,
