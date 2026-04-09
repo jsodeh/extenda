@@ -156,11 +156,9 @@ oauth.get('/callback/:provider', async (c) => {
             user = existingUsers[0];
             userId = user.id;
         } else {
-            const randomPassword = crypto.randomBytes(32).toString('hex');
             const newUsers = await db.insert(users).values({
                 email,
                 name,
-                passwordHash: randomPassword,
                 role: 'free',
                 emailVerified: true,
                 settings: {},

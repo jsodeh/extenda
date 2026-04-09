@@ -244,7 +244,6 @@ authOAuth.get('/callback/:provider', async (c) => {
             const [newUser] = await db.insert(users).values({
                 email,
                 name,
-                passwordHash: '', // No password for OAuth users
                 role: 'free',
                 settings: {},
                 googleAccessToken: provider === 'google' ? tokenData.access_token : null,
