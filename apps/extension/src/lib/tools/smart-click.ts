@@ -44,7 +44,7 @@ async function identifyElementFromScreenshot(
     description: string
 ): Promise<ElementLocation | null> {
     // Get API URL from storage or use default
-    const { apiUrl = 'https://extenda-api-604583941288.us-central1.run.app' } =
+    const { apiUrl = 'https://extenda-pxa6.onrender.com' } =
         await chrome.storage.local.get('apiUrl');
 
     const { accessToken } = await chrome.storage.local.get('accessToken');

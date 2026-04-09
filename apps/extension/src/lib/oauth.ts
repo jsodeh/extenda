@@ -3,7 +3,7 @@
  * Opens OAuth popup, listens for success message, closes popup
  */
 
-const API_BASE_URL = 'https://extenda-api-604583941288.us-central1.run.app';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 export interface OAuthResult {
     success: boolean;

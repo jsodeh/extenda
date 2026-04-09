@@ -28,7 +28,7 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
     const [customPrompt, setCustomPrompt] = useState('');
     const [promptStyle, setPromptStyle] = useState('professional');
     const [saved, setSaved] = useState(false);
-    const API_URL = 'https://extenda-api-604583941288.us-central1.run.app';
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
     useEffect(() => {
         const fetchPreferences = async () => {

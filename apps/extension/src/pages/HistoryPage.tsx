@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { MessageSquare, Clock, ArrowRight, ArrowLeft } from 'lucide-react';
-import { useAuth } from '@clerk/chrome-extension';
+import { useAuth } from '../contexts/auth-context';
 
 interface ChatSession {
     id: string;
@@ -15,7 +15,7 @@ interface HistoryPageProps {
 }
 
 export default function HistoryPage({ onSelectSession, onBack }: HistoryPageProps) {
-    const { getToken, isLoaded } = useAuth();
+    const { accessToken, isLoaded } = useAuth();
     const [sessions, setSessions] = useState<ChatSession[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -27,16 +27,15 @@ export default function HistoryPage({ onSelectSession, onBack }: HistoryPageProp
 
     const loadSessions = async () => {
         try {
-            const token = await getToken();
-            if (!token) {
+            if (!accessToken) {
                 setLoading(false);
                 return;
             }
-            const API_URL = 'https://extenda-api-604583941288.us-central1.run.app';
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
             const response = await fetch(`${API_URL}/api/chat/sessions`, {
                 headers: {
-                    'Authorization': `Bearer ${token}`
+                    'Authorization': `Bearer ${accessToken}`
                 }
             });
 

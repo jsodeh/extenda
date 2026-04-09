@@ -21,7 +21,7 @@
         "identity"
     ],
     "content_security_policy": {
-        "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://*.clerk.accounts.dev https://*.clerk.com https://clerk-telemetry.com https://extenda-api-604583941288.us-central1.run.app;"
+        "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://extenda-pxa6.onrender.com https://*.googleapis.com;"
     },
     "background": {
         "service_worker": "src/background/index.ts",

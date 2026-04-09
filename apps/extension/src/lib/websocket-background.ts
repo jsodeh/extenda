@@ -24,7 +24,10 @@ class BackgroundWebSocketClient {
         this.currentToken = token;
 
         console.log('[BgWS] Connecting to API (websocket-only)...');
-        this.socket = io('https://extenda-api-604583941288.us-central1.run.app', {
+        // Note: import.meta.env is NOT available in service workers at runtime.
+        // We use the known production URL as default here.
+        const apiUrl = 'https://extenda-pxa6.onrender.com';
+        this.socket = io(apiUrl, {
             // CRITICAL: Use websocket only - polling fails in Chrome extension service workers
             transports: ['websocket'],
             upgrade: false,

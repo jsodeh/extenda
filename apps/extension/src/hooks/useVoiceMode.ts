@@ -118,7 +118,7 @@ export function useVoiceMode(options: UseVoiceModeOptions): UseVoiceModeReturn {
                 context: {
                     accessToken: options.accessToken || undefined,
                     sessionId: options.sessionId || undefined,
-                    apiUrl: 'https://extenda-api-604583941288.us-central1.run.app'
+                    apiUrl: import.meta.env.VITE_API_URL || 'https://extenda-pxa6.onrender.com'
                 },
                 onStatusChange: handleStatusChange,
                 onTranscript: (text, role) => {

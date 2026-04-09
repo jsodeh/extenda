@@ -38,7 +38,8 @@ export default function TemplatesPage({ onBack }: TemplatesPageProps) {
 
     const fetchTemplates = async () => {
         try {
-            const response = await fetch('https://extenda-api-604583941288.us-central1.run.app/api/templates');
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+            const response = await fetch(`${API_URL}/api/templates`);
             const data = await response.json();
             setTemplates(data.templates || []);
         } catch (error) {
@@ -62,7 +63,8 @@ export default function TemplatesPage({ onBack }: TemplatesPageProps) {
         if (!selectedTemplate) return;
 
         try {
-            const response = await fetch('https://extenda-api-604583941288.us-central1.run.app/api/templates/execute', {
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+            const response = await fetch(`${API_URL}/api/templates/execute`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

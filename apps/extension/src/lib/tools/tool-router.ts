@@ -296,7 +296,7 @@ async function executeServerTool(
     args: Record<string, any>,
     context: ToolExecutionContext
 ): Promise<any> {
-    const apiUrl = context.apiUrl || 'https://extenda-api-604583941288.us-central1.run.app';
+    const apiUrl = context.apiUrl || 'https://extenda-pxa6.onrender.com';
 
     // Map tool names to API endpoints
     const endpointMapping: Record<string, { endpoint: string; method: string }> = {
