@@ -16,6 +16,7 @@ import { Server } from 'socket.io';
 import { EVENTS_CLIENT, EVENTS_SERVER, WorkflowStartPayload, WorkflowApprovePayload, Execution } from '@extenda/shared';
 import { eq } from 'drizzle-orm';
 import { runMigrations } from './db/migrate.js';
+import { repairDatabaseSync } from './db/repair-sync.js';
 import app from './server.js';
 import { orchestrator } from './services/orchestrator.js';
 import { intentClassifier } from './services/intent-classifier.js';
@@ -66,8 +67,9 @@ const server = serve({
     // Run migrations on startup
     try {
         await runMigrations();
+        await repairDatabaseSync();
     } catch (e) {
-        console.error('Migration failed:', e);
+        console.error('Migration or Repair failed:', e);
     }
     console.log(`Listening on http://${info.address}:${info.port}`);
 });
