@@ -11,7 +11,7 @@ let model: any = null;
 if (API_KEY) {
     genAI = new GoogleGenerativeAI(API_KEY);
     model = genAI.getGenerativeModel({
-        model: 'gemini-2.0-flash-exp',
+        model: 'gemini-2.0-flash',
         safetySettings: [
             {
                 category: HarmCategory.HARM_CATEGORY_HARASSMENT,

@@ -28,7 +28,7 @@ export interface VoiceSessionConfig {
     onToolResult?: (name: string, result: any) => void;
 }
 
-const DEFAULT_MODEL = 'gemini-2.0-flash-exp';
+const DEFAULT_MODEL = 'models/gemini-2.0-flash';
 
 /**
  * Voice Session Manager for Gemini Live API
