@@ -639,13 +639,13 @@ function AppContent() {
                         {messages.length === 0 ? (
                             <div className="flex-1 flex flex-col items-center justify-center text-center p-6 transition-all duration-1000">
                                 <div className="mb-4 animate-in fade-in zoom-in-50 duration-500">
-                                    <img
-                                        src={iconLight}
+                                <img
+                                        src={iconDark}
                                         alt="Extenda Logo"
                                         className="w-12 h-12 dark:hidden drop-shadow-xl opacity-90"
                                     />
                                     <img
-                                        src={iconDark}
+                                        src={iconLight}
                                         alt="Extenda Logo"
                                         className="w-12 h-12 hidden dark:block drop-shadow-xl opacity-90"
                                     />

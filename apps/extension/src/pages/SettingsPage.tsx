@@ -154,14 +154,14 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
             <div 
                 onClick={() => setSelectedProvider(id)}
                 className={`flex flex-col relative p-4 rounded-xl border-2 cursor-pointer transition-all min-h-[160px] ${
-                    isActive ? 'border-primary bg-primary/5 shadow-sm' : 'border-gray-100 bg-white hover:border-gray-200 hover:bg-gray-50'
+                    isActive ? 'border-primary bg-primary/5 shadow-sm' : 'border-border bg-card hover:border-border/80 hover:bg-muted/30'
                 }`}
             >
                 <div className="flex items-center justify-between mb-1">
-                    <h3 className={`font-semibold text-sm ${isActive ? 'text-primary' : 'text-gray-800'}`}>{name}</h3>
-                    {hasKey && <CheckCircle2 className="w-4 h-4 text-emerald-500 bg-white rounded-full" />}
+                    <h3 className={`font-semibold text-sm ${isActive ? 'text-primary' : 'text-foreground'}`}>{name}</h3>
+                    {hasKey && <CheckCircle2 className="w-4 h-4 text-emerald-500 bg-background rounded-full" />}
                 </div>
-                <p className="text-[10px] text-gray-500 mb-3 h-6 line-clamp-2">{desc}</p>
+                <p className="text-[10px] text-muted-foreground mb-3 h-6 line-clamp-2">{desc}</p>
                 
                 {isActive && (
                     <div className="mt-auto space-y-2" onClick={(e) => e.stopPropagation()}>
@@ -189,7 +189,7 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                         <select
                             value={defaultModels[id as keyof DefaultModels]}
                             onChange={(e) => handleModelChange(id as keyof DefaultModels, e.target.value)}
-                            className="bg-white block w-full px-2 py-1.5 border border-gray-200 rounded-lg text-[11px] text-gray-700 focus:ring-primary focus:border-primary"
+                            className="bg-background block w-full px-2 py-1.5 border border-border rounded-lg text-[11px] text-foreground focus:ring-primary focus:border-primary"
                         >
                             {PROVIDER_MODELS[id as keyof typeof PROVIDER_MODELS].map(m => (
                                 <option key={m} value={m}>{m}</option>
@@ -202,9 +202,9 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
     };
 
     return (
-        <div className="flex flex-col h-screen bg-gray-50/50">
+        <div className="flex flex-col h-screen bg-background text-foreground">
             {/* Header */}
-            <div className="border-b border-gray-100 bg-white/80 backdrop-blur-md px-4 py-4 sticky top-0 z-10 flex items-center gap-3">
+            <div className="border-b border-border bg-background/80 backdrop-blur-md px-4 py-4 sticky top-0 z-10 flex items-center gap-3">
                 <button
                     onClick={() => {
                         if (activeSection === 'root') {
@@ -213,11 +213,11 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                             setActiveSection('root');
                         }
                     }}
-                    className="p-1.5 -ml-1.5 rounded-full hover:bg-gray-100 transition-colors"
+                    className="p-1.5 -ml-1.5 rounded-full hover:bg-muted transition-colors"
                 >
-                    <ArrowLeft className="h-5 w-5 text-gray-600" />
+                    <ArrowLeft className="h-5 w-5 text-muted-foreground hover:text-foreground" />
                 </button>
-                <h1 className="text-[17px] font-semibold text-gray-900 tracking-tight">
+                <h1 className="text-[17px] font-semibold text-foreground tracking-tight">
                     {activeSection === 'root' ? 'Settings' : SECTIONS.find(s => s.id === activeSection)?.label}
                 </h1>
             </div>
@@ -230,10 +230,10 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                             <button
                                 key={section.id}
                                 onClick={() => setActiveSection(section.id)}
-                                className="w-full flex items-center justify-between p-4 bg-white rounded-xl shadow-sm border border-gray-100 hover:border-primary/20 hover:shadow-md transition-all group"
+                                className="w-full flex items-center justify-between p-4 bg-card rounded-xl shadow-sm border border-border hover:border-primary/20 hover:shadow-md transition-all group"
                             >
-                                <span className="font-medium text-sm text-gray-800">{section.label}</span>
-                                <ChevronRight className="h-5 w-5 text-gray-300 group-hover:text-primary transition-colors" />
+                                <span className="font-medium text-sm text-foreground">{section.label}</span>
+                                <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
                             </button>
                         ))}
                     </div>
@@ -247,9 +247,9 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
 
                         {activeSection === 'model' && (
                             <div className="p-5 space-y-6">
-                                <div className="space-y-1 w-full">
-                                    <h2 className="text-sm font-semibold text-gray-900">Bring Your Own Key</h2>
-                                    <p className="text-xs text-gray-500 leading-relaxed">
+                                <div className="space-y-1 w-full text-center sm:text-left">
+                                    <h2 className="text-sm font-semibold text-foreground">Bring Your Own Key</h2>
+                                    <p className="text-xs text-muted-foreground leading-relaxed">
                                         Extenda runs securely on your own API keys. Keys are saved locally to your device and directly passed to the vendor. We do not store them on our databases.
                                     </p>
                                 </div>
@@ -276,8 +276,8 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                                                 onClick={() => setPromptStyle(style)}
                                                 className={`px-4 py-3 rounded-xl border text-sm font-medium capitalize transition-all ${
                                                     promptStyle === style 
-                                                        ? 'border-primary bg-primary text-white shadow-md' 
-                                                        : 'border-gray-200 bg-white text-gray-600 hover:border-primary/30'
+                                                        ? 'border-primary bg-primary text-primary-foreground shadow-md' 
+                                                        : 'border-border bg-card text-muted-foreground hover:border-primary/30 hover:text-foreground'
                                                 }`}
                                             >
                                                 {style}

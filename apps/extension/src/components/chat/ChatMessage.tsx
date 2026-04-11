@@ -84,8 +84,8 @@ export function ChatMessage({ message, currentWorkflow, pendingStep, onApprove, 
 
     return (
         <div className={cn(
-            "group w-full py-1.5",
-            isSystem ? "bg-muted/30" : "bg-background"
+            "group w-full py-2 border-b border-border/10",
+            isSystem ? "bg-muted/20" : "bg-transparent"
         )}>
             <div className="max-w-3xl mx-auto px-4">
                 {/* Content Column - no avatar icons for cleaner alignment */}

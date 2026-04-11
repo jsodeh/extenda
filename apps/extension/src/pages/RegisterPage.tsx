@@ -1,22 +1,23 @@
 import { useAuth } from '../contexts/auth-context';
+import iconLight from '../assets/icon-light.png';
+import iconDark from '../assets/icon-dark.png';
 
 export default function RegisterPage({ onSwitch }: { onSwitch: () => void }) {
     const { signIn } = useAuth();
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 flex flex-col items-center justify-center p-4">
-            <div className="w-full max-w-xs">
+        <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+            <div className="w-full max-w-xs animate-in fade-in slide-in-from-bottom-4 duration-700">
                 <div className="text-center mb-6">
-                    <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-indigo-500/20 border border-indigo-400/30 mb-3">
-                        <svg className="w-6 h-6 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
+                    <div className="inline-flex items-center justify-center mb-4">
+                        <img src={iconDark} alt="Extenda" className="w-16 h-16 drop-shadow-2xl dark:hidden" />
+                        <img src={iconLight} alt="Extenda" className="w-16 h-16 drop-shadow-2xl hidden dark:block" />
                     </div>
-                    <h1 className="text-xl font-bold text-white tracking-tight">Create Account</h1>
-                    <p className="text-slate-400 text-xs mt-1">Sign up to get started with Extenda</p>
+                    <h1 className="text-xl font-bold text-foreground tracking-tight">Create Account</h1>
+                    <p className="text-muted-foreground text-xs mt-1">Sign up to get started with Extenda</p>
                 </div>
 
-                <div className="bg-white/5 backdrop-blur-xl rounded-2xl p-5 border border-white/10 shadow-xl">
+                <div className="bg-card backdrop-blur-xl rounded-2xl p-6 border border-border shadow-xl">
                     <p className="text-slate-300 text-xs text-center mb-4 font-medium">Choose a sign-up method</p>
 
                     <div className="space-y-2.5">
@@ -46,11 +47,11 @@ export default function RegisterPage({ onSwitch }: { onSwitch: () => void }) {
                 </div>
 
                 <div className="mt-4 text-center">
-                    <p className="text-slate-500 text-xs">
+                    <p className="text-muted-foreground text-xs">
                         Already have an account?{' '}
                         <button
                             onClick={onSwitch}
-                            className="text-indigo-400 hover:text-indigo-300 font-medium"
+                            className="text-primary hover:text-primary/80 font-medium"
                         >
                             Sign in
                         </button>

@@ -65,11 +65,11 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-xs mx-3 overflow-hidden">
+            <div className="bg-background rounded-xl shadow-2xl w-full max-w-xs mx-3 overflow-hidden border border-border">
                 {/* Progress Bar */}
-                <div className="h-1 bg-gray-100">
+                <div className="h-1 bg-muted">
                     <div
-                        className="h-full bg-indigo-500 transition-all duration-300 ease-out"
+                        className="h-full bg-primary transition-all duration-300 ease-out"
                         style={{ width: `${(step / 5) * 100}%` }}
                     />
                 </div>
@@ -79,23 +79,23 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                     {step === 1 && (
                         <div className="text-center">
                             <div className="inline-flex items-center justify-center mb-4">
-                                <img src={iconLight} alt="Extenda" className="h-14 w-14 dark:hidden" />
-                                <img src={iconDark} alt="Extenda" className="h-14 w-14 hidden dark:block" />
+                                <img src={iconDark} alt="Extenda" className="h-14 w-14 dark:hidden" />
+                                <img src={iconLight} alt="Extenda" className="h-14 w-14 hidden dark:block" />
                             </div>
-                            <h2 className="text-lg font-bold text-gray-900 mb-1">Welcome to Extenda!</h2>
-                            <p className="text-xs text-gray-500 mb-4 leading-relaxed">
+                             <h2 className="text-lg font-bold text-foreground mb-1">Welcome to Extenda!</h2>
+                            <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
                                 Your AI assistant that automates workflows across all your tools.
                             </p>
                             <div className="grid grid-cols-3 gap-2">
                                 {[
-                                    { icon: <Zap className="h-4 w-4 text-indigo-500 mx-auto mb-1" />, title: 'Smart AI', desc: 'Auto workflows' },
-                                    { icon: <Settings className="h-4 w-4 text-indigo-500 mx-auto mb-1" />, title: '200+ Actions', desc: '14 integrations' },
-                                    { icon: <Target className="h-4 w-4 text-indigo-500 mx-auto mb-1" />, title: 'Goal-Driven', desc: 'Adapts to you' },
+                                    { icon: <Zap className="h-4 w-4 text-primary mx-auto mb-1" />, title: 'Smart AI', desc: 'Auto workflows' },
+                                    { icon: <Settings className="h-4 w-4 text-primary mx-auto mb-1" />, title: '200+ Actions', desc: '14 integrations' },
+                                    { icon: <Target className="h-4 w-4 text-primary mx-auto mb-1" />, title: 'Goal-Driven', desc: 'Adapts to you' },
                                 ].map((item) => (
-                                    <div key={item.title} className="p-2.5 bg-indigo-50/60 rounded-lg text-center">
+                                    <div key={item.title} className="p-2.5 bg-muted/60 rounded-lg text-center">
                                         {item.icon}
-                                        <p className="text-xs font-semibold text-gray-800">{item.title}</p>
-                                        <p className="text-[10px] text-gray-500 mt-0.5">{item.desc}</p>
+                                        <p className="text-xs font-semibold text-foreground">{item.title}</p>
+                                        <p className="text-[10px] text-muted-foreground mt-0.5">{item.desc}</p>
                                     </div>
                                 ))}
                             </div>
@@ -105,16 +105,16 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                     {/* Step 2: Business Type */}
                     {step === 2 && (
                         <div>
-                            <h2 className="text-base font-bold text-gray-900 mb-0.5">What describes you best?</h2>
-                            <p className="text-xs text-gray-500 mb-3">Helps us personalize your experience.</p>
+                            <h2 className="text-base font-bold text-foreground mb-0.5">What describes you best?</h2>
+                            <p className="text-xs text-muted-foreground mb-3">Helps us personalize your experience.</p>
                             <div className="grid grid-cols-2 gap-1.5">
                                 {BUSINESS_TYPES.map((type) => (
                                     <button
                                         key={type}
                                         onClick={() => setBusinessType(type)}
                                         className={`py-2 px-3 rounded-lg border text-xs font-medium transition-all text-left ${businessType === type
-                                            ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                                            : 'border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                                            ? 'border-primary bg-primary/10 text-primary'
+                                            : 'border-border text-muted-foreground hover:border-border/80 hover:bg-muted/50'
                                         }`}
                                     >
                                         {type}
@@ -127,22 +127,22 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                     {/* Step 3: Goals */}
                     {step === 3 && (
                         <div>
-                            <h2 className="text-base font-bold text-gray-900 mb-0.5">Primary goals?</h2>
-                            <p className="text-xs text-gray-500 mb-3">Select all that apply.</p>
+                            <h2 className="text-base font-bold text-foreground mb-0.5">Primary goals?</h2>
+                            <p className="text-xs text-muted-foreground mb-3">Select all that apply.</p>
                             <div className="grid grid-cols-2 gap-1.5">
                                 {GOALS.map((goal) => (
                                     <button
                                         key={goal.id}
                                         onClick={() => handleGoalToggle(goal.id)}
                                         className={`py-2 px-3 rounded-lg border text-xs font-medium flex items-center gap-1.5 transition-all ${selectedGoals.includes(goal.id)
-                                            ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                                            : 'border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                                            ? 'border-primary bg-primary/10 text-primary'
+                                            : 'border-border text-muted-foreground hover:border-border/80 hover:bg-muted/50'
                                         }`}
                                     >
                                         <span>{goal.icon}</span>
                                         <span>{goal.label}</span>
                                         {selectedGoals.includes(goal.id) && (
-                                            <CheckCircle className="h-3 w-3 text-indigo-500 ml-auto flex-shrink-0" />
+                                            <CheckCircle className="h-3 w-3 text-primary ml-auto flex-shrink-0" />
                                         )}
                                     </button>
                                 ))}
@@ -153,35 +153,35 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                     {/* Step 4: Connect */}
                     {step === 4 && (
                         <div>
-                            <h2 className="text-base font-bold text-gray-900 mb-0.5">Connect an integration</h2>
-                            <p className="text-xs text-gray-500 mb-3">We recommend starting with Google.</p>
-                            <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                            <h2 className="text-base font-bold text-foreground mb-0.5">Connect an integration</h2>
+                            <p className="text-xs text-muted-foreground mb-3">We recommend starting with Google.</p>
+                            <div className="bg-muted/50 rounded-lg p-3 border border-border">
                                 <div className="flex items-center gap-3">
                                     <span className="text-2xl">📧</span>
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-xs font-semibold text-gray-900 truncate">Google Workspace</p>
-                                        <p className="text-[10px] text-gray-500">Gmail, Calendar, Drive</p>
+                                        <p className="text-xs font-semibold text-foreground truncate">Google Workspace</p>
+                                        <p className="text-[10px] text-muted-foreground">Gmail, Calendar, Drive</p>
                                     </div>
                                     {connected ? (
                                         <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
                                     ) : (
                                         <button
                                             onClick={() => setConnected(true)}
-                                            className="px-3 py-1 bg-indigo-500 text-white rounded-lg text-xs font-medium hover:bg-indigo-600 flex-shrink-0"
+                                            className="px-3 py-1 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:opacity-90 flex-shrink-0"
                                         >
                                             Connect
                                         </button>
                                     )}
                                 </div>
                                 {connected && (
-                                    <div className="mt-2 p-2 bg-green-50 border border-green-100 rounded-lg">
-                                        <p className="text-[10px] text-green-700 flex items-center gap-1">
+                                    <div className="mt-2 p-2 bg-green-500/10 border border-green-500/20 rounded-lg">
+                                        <p className="text-[10px] text-green-600 flex items-center gap-1">
                                             <CheckCircle className="h-3 w-3" /> Connected to Google!
                                         </p>
                                     </div>
                                 )}
                             </div>
-                            <p className="text-[10px] text-gray-400 text-center mt-2">
+                            <p className="text-[10px] text-muted-foreground text-center mt-2">
                                 More integrations available in Settings
                             </p>
                         </div>
@@ -191,15 +191,15 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                     {step === 5 && (
                         <div className="text-center">
                             <div className="inline-flex items-center justify-center mb-4">
-                                <img src={iconLight} alt="Extenda" className="h-12 w-12 dark:hidden" />
-                                <img src={iconDark} alt="Extenda" className="h-12 w-12 hidden dark:block" />
+                                <img src={iconDark} alt="Extenda" className="h-12 w-12 dark:hidden" />
+                                <img src={iconLight} alt="Extenda" className="h-12 w-12 hidden dark:block" />
                             </div>
-                            <h2 className="text-base font-bold text-gray-900 mb-1">You're all set!</h2>
-                            <p className="text-xs text-gray-500 mb-3">Try your first command:</p>
-                            <div className="bg-gray-50 rounded-lg p-3 border border-gray-100 text-left space-y-1.5">
+                            <h2 className="text-base font-bold text-foreground mb-1">You're all set!</h2>
+                            <p className="text-xs text-muted-foreground mb-3">Try your first command:</p>
+                            <div className="bg-muted/50 rounded-lg p-3 border border-border text-left space-y-1.5">
                                 {['"Summarize my last 5 emails"', '"Create a meeting for tomorrow at 2pm"', '"What\'s on this page?"'].map((cmd) => (
-                                    <p key={cmd} className="text-xs text-gray-600 flex items-center gap-1.5">
-                                        <span className="text-indigo-400">›</span> {cmd}
+                                    <p key={cmd} className="text-xs text-muted-foreground flex items-center gap-1.5">
+                                        <span className="text-primary">›</span> {cmd}
                                     </p>
                                 ))}
                             </div>

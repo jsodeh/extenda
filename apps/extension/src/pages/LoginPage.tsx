@@ -2,24 +2,26 @@ import React from 'react';
 import { LogIn } from 'lucide-react';
 import { useAuth } from '../contexts/auth-context';
 import iconLight from '../assets/icon-light.png';
+import iconDark from '../assets/icon-dark.png';
 
 export default function LoginPage({ onSwitch }: { onSwitch: () => void }) {
     const { signIn } = useAuth();
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 flex flex-col items-center justify-center p-4">
-            <div className="w-full max-w-xs">
+        <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+            <div className="w-full max-w-xs transition-all duration-700 animate-in fade-in slide-in-from-bottom-4">
                 {/* Logo & Title */}
                 <div className="text-center mb-6">
                     <div className="inline-flex items-center justify-center mb-4">
-                        <img src={iconLight} alt="Extenda" className="w-16 h-16 drop-shadow-2xl" />
+                        <img src={iconDark} alt="Extenda" className="w-16 h-16 drop-shadow-2xl dark:hidden" />
+                        <img src={iconLight} alt="Extenda" className="w-16 h-16 drop-shadow-2xl hidden dark:block" />
                     </div>
-                    <h1 className="text-xl font-bold text-white tracking-tight">Extenda</h1>
-                    <p className="text-slate-400 text-xs mt-1">Your AI Executive Assistant</p>
+                    <h1 className="text-xl font-bold text-foreground tracking-tight">Extenda</h1>
+                    <p className="text-muted-foreground text-xs mt-1">Your AI Executive Assistant</p>
                 </div>
 
                 {/* Card */}
-                <div className="bg-white/5 backdrop-blur-xl rounded-2xl p-5 border border-white/10 shadow-xl">
+                <div className="bg-card backdrop-blur-xl rounded-2xl p-6 border border-border shadow-xl">
                     <p className="text-slate-300 text-xs text-center mb-4 font-medium">Sign in to continue</p>
 
                     <div className="space-y-2.5">
