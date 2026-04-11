@@ -148,7 +148,9 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
 
     const ProviderCard = ({ id, name, desc }: { id: keyof KeyStorage, name: string, desc: string }) => {
         const isActive = selectedProvider === id;
-        const hasKey = id === 'ollama' ? true : providerKeys[id]?.length > 10;
+        const hasKey = id === 'ollama' 
+            ? ollamaUrl.startsWith('http') 
+            : providerKeys[id]?.length > 10;
         
         return (
             <div 
@@ -171,17 +173,17 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                                 placeholder="Base URL (http://...)"
                                 value={ollamaUrl}
                                 onChange={(e) => setOllamaUrl(e.target.value)}
-                                className="bg-white block w-full px-3 py-1.5 border border-gray-200 rounded-lg text-[11px] focus:ring-primary focus:border-primary placeholder-gray-400"
+                                className="bg-muted/50 block w-full px-3 py-1.5 border border-border rounded-lg text-[11px] text-foreground focus:ring-primary focus:border-primary placeholder-muted-foreground transition-all"
                             />
                         ) : (
                             <div className="relative">
-                                <Key className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-gray-400" />
+                                <Key className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
                                 <input
                                     type="password"
                                     placeholder="API Key"
                                     value={providerKeys[id]}
                                     onChange={(e) => handleKeyChange(id, e.target.value)}
-                                    className="bg-white block w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-[11px] focus:ring-primary focus:border-primary placeholder-gray-400"
+                                    className="bg-muted/50 block w-full pl-8 pr-3 py-1.5 border border-border rounded-lg text-[11px] text-foreground focus:ring-primary focus:border-primary placeholder-muted-foreground transition-all"
                                 />
                             </div>
                         )}
@@ -189,7 +191,7 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                         <select
                             value={defaultModels[id as keyof DefaultModels]}
                             onChange={(e) => handleModelChange(id as keyof DefaultModels, e.target.value)}
-                            className="bg-background block w-full px-2 py-1.5 border border-border rounded-lg text-[11px] text-foreground focus:ring-primary focus:border-primary"
+                            className="bg-background block w-full px-2 py-1.5 border border-border rounded-lg text-[11px] text-foreground focus:ring-primary focus:border-primary cursor-pointer"
                         >
                             {PROVIDER_MODELS[id as keyof typeof PROVIDER_MODELS].map(m => (
                                 <option key={m} value={m}>{m}</option>
@@ -240,7 +242,7 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                 ) : (
                     <div className="h-full flex flex-col">
                         {activeSection === 'integrations' && (
-                            <div className="p-4">
+                            <div className="flex-1 overflow-hidden">
                                 <IntegrationsPage />
                             </div>
                         )}
@@ -248,9 +250,13 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                         {activeSection === 'model' && (
                             <div className="p-5 space-y-6">
                                 <div className="space-y-1 w-full text-center sm:text-left">
-                                    <h2 className="text-sm font-semibold text-foreground">Bring Your Own Key</h2>
+                                    <h2 className="text-sm font-semibold text-foreground">
+                                        {selectedProvider === 'ollama' ? 'Local AI Configuration' : 'Bring Your Own Key'}
+                                    </h2>
                                     <p className="text-xs text-muted-foreground leading-relaxed">
-                                        Extenda runs securely on your own API keys. Keys are saved locally to your device and directly passed to the vendor. We do not store them on our databases.
+                                        {selectedProvider === 'ollama' 
+                                            ? 'Extenda connects directly to your local Ollama instance. Ensure Ollama is running on your machine.' 
+                                            : 'Extenda runs securely on your own API keys. Keys are saved locally to your device and directly passed to the vendor.'}
                                     </p>
                                 </div>
                                 
@@ -266,7 +272,7 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                         {activeSection === 'prompts' && (
                             <div className="p-5 space-y-8">
                                 <div className="space-y-3">
-                                    <label className="block text-sm font-medium text-gray-800">
+                                    <label className="block text-sm font-medium text-foreground">
                                         Response Target Stylings
                                     </label>
                                     <div className="grid grid-cols-2 gap-3">
@@ -287,7 +293,7 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                                 </div>
 
                                 <div className="space-y-3">
-                                    <label className="block text-sm font-medium text-gray-800">
+                                    <label className="block text-sm font-medium text-foreground">
                                         Global System Execution Prompt
                                     </label>
                                     <textarea
@@ -295,42 +301,42 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                                         onChange={(e) => setCustomPrompt(e.target.value)}
                                         placeholder="E.g. Always write code in Python. Always respond natively in Spanish. Do not use emojis."
                                         rows={6}
-                                        className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none shadow-sm placeholder:text-gray-400"
+                                        className="w-full rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none shadow-sm placeholder:text-muted-foreground"
                                     />
-                                    <p className="text-xs text-gray-500">Injected into the orchestrator context block for every prompt.</p>
+                                    <p className="text-xs text-muted-foreground">Injected into the orchestrator context block for every prompt.</p>
                                 </div>
                             </div>
                         )}
 
                         {activeSection === 'general' && (
                             <div className="p-5 space-y-2">
-                                <div className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-100 shadow-sm">
+                                <div className="flex items-center justify-between p-4 bg-card rounded-xl border border-border shadow-sm">
                                     <div>
-                                        <h4 className="text-sm font-medium text-gray-900">Auto-execute Workflows</h4>
-                                        <p className="text-xs text-gray-500 mt-0.5">
+                                        <h4 className="text-sm font-medium text-foreground">Auto-execute Workflows</h4>
+                                        <p className="text-xs text-muted-foreground mt-0.5">
                                             Run generated code actions instantly
                                         </p>
                                     </div>
                                     <button
                                         onClick={() => setAutoExecute(!autoExecute)}
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${autoExecute ? 'bg-primary' : 'bg-gray-200'}`}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${autoExecute ? 'bg-primary' : 'bg-muted'}`}
                                     >
-                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${autoExecute ? 'translate-x-[22px]' : 'translate-x-1'}`} />
+                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-background ring-0 transition-transform ${autoExecute ? 'translate-x-[22px]' : 'translate-x-1'}`} />
                                     </button>
                                 </div>
 
-                                <div className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-100 shadow-sm">
+                                <div className="flex items-center justify-between p-4 bg-card rounded-xl border border-border shadow-sm">
                                     <div>
-                                        <h4 className="text-sm font-medium text-gray-900">Push Notifications</h4>
-                                        <p className="text-xs text-gray-500 mt-0.5">
+                                        <h4 className="text-sm font-medium text-foreground">Push Notifications</h4>
+                                        <p className="text-xs text-muted-foreground mt-0.5">
                                             Alert me when tasks complete in background
                                         </p>
                                     </div>
                                     <button
                                         onClick={() => setNotifications(!notifications)}
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${notifications ? 'bg-primary' : 'bg-gray-200'}`}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${notifications ? 'bg-primary' : 'bg-muted'}`}
                                     >
-                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${notifications ? 'translate-x-[22px]' : 'translate-x-1'}`} />
+                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-background ring-0 transition-transform ${notifications ? 'translate-x-[22px]' : 'translate-x-1'}`} />
                                     </button>
                                 </div>
                             </div>
@@ -341,9 +347,9 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                             <div className="p-5 mt-auto">
                                 <button
                                     onClick={handleSave}
-                                    className={`w-full flex justify-center items-center gap-2 py-3.5 px-4 rounded-xl shadow-md font-semibold text-sm transition-all focus:outline-none focus:ring-4 focus:ring-primary/20 ${saved
+                                    className={`w-full flex justify-center items-center gap-2 py-3.5 px-4 rounded-xl shadow-lg font-semibold text-sm transition-all focus:outline-none focus:ring-4 focus:ring-primary/20 ${saved
                                         ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-                                        : 'bg-gray-900 text-white hover:bg-black'
+                                        : 'bg-foreground text-background hover:opacity-90 active:scale-95'
                                         }`}
                                 >
                                     {saved ? <CheckCircle2 className="w-5 h-5" /> : <Save className="w-5 h-5" />}
