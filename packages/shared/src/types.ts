@@ -1,5 +1,13 @@
 // Core Data Models for Extenda
 
+export interface ModelConfig {
+    provider: string; // 'google', 'openai', 'anthropic', 'ollama'
+    model: string;
+    apiKey: string;
+    baseURL?: string; // For Ollama or proxies
+    mode?: string; // e.g. 'Fast', 'Planning'
+}
+
 export interface User {
     id: string;
     email: string;

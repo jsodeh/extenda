@@ -1,4 +1,4 @@
-import { generateText } from '../lib/gemini.js';
+import { generateText, ModelConfig } from '../lib/models.js';
 
 interface AIProcessorParams {
     action: 'summarize' | 'analyze' | 'categorize';
@@ -10,21 +10,21 @@ export class AIProcessor {
     /**
      * Summarize content
      */
-    static async summarize(content: string, maxLength: number = 200): Promise<string> {
+    static async summarize(content: string, maxLength: number = 200, modelConfig?: ModelConfig): Promise<string> {
         const prompt = `Summarize the following content in ${maxLength} words or less. Be concise and capture the key points:\n\n${content}`;
-        const summary = await generateText(prompt);
+        const summary = await generateText(prompt, modelConfig);
         return summary.trim();
     }
 
     /**
      * Analyze content and extract insights
      */
-    static async analyze(content: string, focusArea?: string): Promise<any> {
+    static async analyze(content: string, focusArea?: string, modelConfig?: ModelConfig): Promise<any> {
         const focusPrompt = focusArea ? `Focus on: ${focusArea}` : '';
         const prompt = `Analyze the following content and provide key insights, patterns, and important information. ${focusPrompt}\n\nContent:\n${content}\n\nReturn insights as a JSON object with: { insights: string[], patterns: string[], keyPoints: string[] }`;
 
         try {
-            const response = await generateText(prompt);
+            const response = await generateText(prompt, modelConfig);
             const cleanJson = response.replace(/```json/g, '').replace(/```/g, '').trim();
             return JSON.parse(cleanJson);
         } catch (error) {
@@ -39,34 +39,35 @@ export class AIProcessor {
     /**
      * Categorize content
      */
-    static async categorize(content: string, categories?: string[]): Promise<string> {
+    static async categorize(content: string, categories?: string[], modelConfig?: ModelConfig): Promise<string> {
         const categoryList = categories?.join(', ') || 'urgent, important, informational, action_required, can_wait';
         const prompt = `Categorize the following content into one of these categories: ${categoryList}\n\nContent:\n${content}\n\nReturn ONLY the category name, nothing else.`;
 
-        const category = await generateText(prompt);
+        const category = await generateText(prompt, modelConfig);
         return category.trim().toLowerCase();
     }
 
     /**
      * Main execute function for tool registry
      */
-    static async execute(params: AIProcessorParams): Promise<any> {
+    static async execute(params: AIProcessorParams, executionContext?: any): Promise<any> {
         const { action, content, context } = params;
+        const modelConfig = executionContext?.modelConfig;
 
         // Convert content to string if it's an object
         const contentStr = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
 
         switch (action) {
             case 'summarize':
-                const summary = await this.summarize(contentStr);
+                const summary = await this.summarize(contentStr, 200, modelConfig);
                 return { summary, output: summary, payload: summary };
 
             case 'analyze':
-                const analysis = await this.analyze(contentStr, context);
+                const analysis = await this.analyze(contentStr, context, modelConfig);
                 return { analysis, output: analysis, payload: analysis };
 
             case 'categorize':
-                const category = await this.categorize(contentStr);
+                const category = await this.categorize(contentStr, undefined, modelConfig);
                 return { category, output: category, payload: category };
 
             default:

@@ -22,6 +22,7 @@ import { ToastContainer } from '../components/Toast';
 import { useAuth } from '../contexts/auth-context';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { TextShimmer } from '../components/ui/TextShimmer';
+import { ChatSuggestions, STARTER_SUGGESTIONS, Suggestion } from '../components/chat/ChatSuggestions';
 
 interface FileAttachment {
     name: string;
@@ -81,50 +82,77 @@ function AppContent() {
     const [showRegister, setShowRegister] = useState(false);
     const [currentExecutionId, setCurrentExecutionId] = useState<string | null>(null);
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-    const [geminiApiKey, setGeminiApiKey] = useState<string>('');
+    const [suggestions, setSuggestions] = useState<Suggestion[]>(STARTER_SUGGESTIONS);
+    const [pendingPrompt, setPendingPrompt] = useState<string>('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const workflowRef = useRef<{ id: string; steps: WorkflowStep[] } | null>(null);
 
-    // Load Gemini API key from server
-    useEffect(() => {
-        const fetchVoiceConfig = async () => {
-            if (!accessToken) return;
 
-            try {
-                const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-                const response = await fetch(`${API_URL}/api/config/voice`, {
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`
-                    }
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    setGeminiApiKey(data.geminiApiKey);
-                } else {
-                    console.warn('[App] Voice config not available');
-                }
-            } catch (error) {
-                console.error('[App] Failed to fetch voice config:', error);
-            }
-        };
-
-        fetchVoiceConfig();
-    }, [accessToken]);
 
     // Keep ref in sync with state
     useEffect(() => {
         workflowRef.current = currentWorkflow;
     }, [currentWorkflow]);
 
+    // Fetch dynamic suggestions based on history
+    useEffect(() => {
+        const fetchDynamicSuggestions = async () => {
+            if (!accessToken) return;
+            try {
+                const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+                const response = await fetch(`${API_URL}/api/chat/sessions`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+                
+                if (response.ok) {
+                    const sessions = await response.json();
+                    if (sessions.length > 0) {
+                        const returningPrompts: Suggestion[] = [
+                            { ...STARTER_SUGGESTIONS[2], title: 'Continued Research', description: 'Pick up where you left off on latest tech trends.' },
+                            { ...STARTER_SUGGESTIONS[0], title: 'Inbox Zero', description: 'Let\'s clear out those emails from today.' },
+                            { ...STARTER_SUGGESTIONS[3], title: 'Draft Follow-ups', description: 'Reply to those unresponded threads.' },
+                            { ...STARTER_SUGGESTIONS[1], title: 'Schedule Planning', description: 'Review your upcoming week.' }
+                        ];
+                        setSuggestions(returningPrompts);
+                    }
+                }
+            } catch (err) {
+                console.warn('Failed to fetch sessions for suggestions:', err);
+            }
+        };
+        fetchDynamicSuggestions();
+    }, [accessToken]);
+
     // ... (useEffect)
 
-    const handleApproval = (approved: boolean) => {
+    const handleApproval = async (approved: boolean) => {
         if (!currentExecutionId) return;
+
+        let modelConfig = undefined;
+        if (typeof chrome !== 'undefined' && chrome.storage) {
+            const storage = await chrome.storage.local.get([
+                'extenda_provider_keys', 
+                'extenda_active_provider',
+                'extenda_default_models',
+                'extenda_ollama_url'
+            ]);
+            
+            if (storage.extenda_provider_keys && storage.extenda_active_provider) {
+                const provider = storage.extenda_active_provider;
+                modelConfig = {
+                    provider: provider,
+                    model: storage.extenda_default_models?.[provider] || (provider === 'google' ? 'gemini-2.0-flash' : provider === 'openai' ? 'gpt-4o' : 'claude-3-5-sonnet-latest'),
+                    apiKey: storage.extenda_provider_keys[provider] || '',
+                    baseURL: provider === 'ollama' ? storage.extenda_ollama_url : undefined
+                };
+            }
+        }
 
         wsClient.emit('workflow:resume', {
             executionId: currentExecutionId,
-            approved
+            approved,
+            stepId: pendingApproval?.id,
+            modelConfig
         });
 
         if (!approved) {
@@ -441,7 +469,7 @@ function AppContent() {
         };
     }, [accessToken, currentSessionId]); // Add currentSessionId to dependency if needed, or better use ref for sessionId if callback is stale
 
-    const handleSubmit = async (message: string, files?: File[]) => {
+    const handleSubmit = async (message: string, files?: File[], modelConfig?: any) => {
         if (!message.trim() && (!files || files.length === 0)) return;
 
         // Create attachment info for display
@@ -491,7 +519,7 @@ function AppContent() {
                 ? `${message}\n\n[Attached file contents]:\n${fileContents.join('\n---\n')}`
                 : message;
 
-            wsClient.emit('workflow:start', { intent: enhancedMessage, sessionId: currentSessionId });
+            wsClient.emit('workflow:start', { intent: enhancedMessage, sessionId: currentSessionId, modelConfig });
 
         } catch (error) {
             console.error('Submission failed:', error);
@@ -607,21 +635,30 @@ function AppContent() {
                 onReconnect={() => accessToken && wsClient.connect(accessToken)}
             >
                 <div className="flex flex-col min-h-full pb-60">
-                    <div className="flex-1">
+                    <div className="flex-1 flex flex-col">
                         {messages.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)] text-center p-8 opacity-50">
-                                <div className="flex flex-col items-center justify-center">
+                            <div className="flex-1 flex flex-col items-center justify-center text-center p-6 transition-all duration-1000">
+                                <div className="mb-4 animate-in fade-in zoom-in-50 duration-500">
                                     <img
                                         src={iconLight}
                                         alt="Extenda Logo"
-                                        className="w-24 h-24 dark:hidden drop-shadow-lg"
+                                        className="w-12 h-12 dark:hidden drop-shadow-xl opacity-90"
                                     />
                                     <img
                                         src={iconDark}
                                         alt="Extenda Logo"
-                                        className="w-24 h-24 hidden dark:block drop-shadow-lg"
+                                        className="w-12 h-12 hidden dark:block drop-shadow-xl opacity-90"
                                     />
                                 </div>
+                                
+                                <ChatSuggestions 
+                                    suggestions={suggestions} 
+                                    onSelect={(p) => {
+                                        setPendingPrompt(p);
+                                        // Reset legacy trigger
+                                        setTimeout(() => setPendingPrompt(''), 100);
+                                    }} 
+                                />
                             </div>
                         ) : (
                             messages.map((message) => (
@@ -654,7 +691,7 @@ function AppContent() {
                         disabled={!!pendingApproval}
                         sessionId={currentSessionId}
                         accessToken={accessToken}
-                        geminiApiKey={geminiApiKey}
+                        initialValue={pendingPrompt}
                     />
                 </div>
             </ChatLayout>

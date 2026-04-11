@@ -13,14 +13,14 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { Server } from 'socket.io';
-import { EVENTS_CLIENT, EVENTS_SERVER, WorkflowStartPayload, WorkflowApprovePayload, Execution } from '@extenda/shared';
+import { EVENTS_CLIENT, EVENTS_SERVER, WorkflowStartPayload, WorkflowApprovePayload, WorkflowResumePayload, Execution } from '@extenda/shared';
 import { eq } from 'drizzle-orm';
 import { runMigrations } from './db/migrate.js';
 import { repairDatabaseSync } from './db/repair-sync.js';
 import app from './server.js';
 import { orchestrator } from './services/orchestrator.js';
 import { intentClassifier } from './services/intent-classifier.js';
-import { generateText } from './lib/gemini.js';
+import { generateText } from './lib/models.js';
 import { verify } from 'hono/jwt';
 import { authMiddleware, AuthEnv } from './lib/auth.js';
 import { authOAuth } from './routes/auth-oauth.js';
@@ -158,7 +158,7 @@ io.on('connection', (socket) => {
         try {
             // OPTIMIZATION 1: Quick Match First (no infrastructure delays for greetings)
             console.log('[DEBUG] 0. Running quick intent match...');
-            const quickClassification = await intentClassifier.classify(data.intent, []);
+            const quickClassification = await intentClassifier.classify(data.intent, [], data.modelConfig);
             console.log('[DEBUG] 0.1. Quick classification:', quickClassification.type);
 
             if (quickClassification.type === 'conversational' && quickClassification.confidence === 1.0) {
@@ -195,7 +195,7 @@ RULES:
 - Be warm but concise - maximum 2 sentences.
 - Do NOT mention adapters, tools, or technical details unless asked.
 `;
-                const response = await generateText(chatPrompt);
+                const response = await generateText(chatPrompt, data.modelConfig);
 
                 // Add assistant response to history
                 await orchestrator.addMessage(sessionId, 'assistant', response);
@@ -299,7 +299,8 @@ RULES:
                 tokens: {
                     access_token: validUser.googleAccessToken,
                     refresh_token: validUser.googleRefreshToken
-                }
+                },
+                modelConfig: data.modelConfig
             };
 
             // Get conversation history for intent classification
@@ -316,7 +317,7 @@ RULES:
             socket.emit('agent:status', { state: 'planning', message: 'Designing workflow...' });
 
             const workflowIntent = quickClassification.workflowIntent || data.intent;
-            const workflow = await orchestrator.plan(workflowIntent, user, sessionId);
+            const workflow = await orchestrator.plan(workflowIntent, user, sessionId, data.modelConfig);
 
             // Add workflow plan to history with steps in metadata
             await orchestrator.addMessage(sessionId, 'assistant', `Created workflow with ${workflow.definition.steps.length} steps`, {
@@ -369,10 +370,10 @@ RULES:
         }
     });
 
-    socket.on(EVENTS_CLIENT.WORKFLOW_RESUME, async (data: { executionId: string; approved: boolean }) => {
+    socket.on(EVENTS_CLIENT.WORKFLOW_RESUME, async (data: WorkflowResumePayload) => {
         console.log('Received workflow resume request:', data);
         try {
-            await orchestrator.resume(data.executionId, data.approved);
+            await orchestrator.resume(data.executionId, data.approved, data.modelConfig);
         } catch (error) {
             console.error('Workflow resume failed:', error);
             socket.emit(EVENTS_SERVER.WORKFLOW_ERROR, { error: `Failed to resume: ${(error as Error).message}` });

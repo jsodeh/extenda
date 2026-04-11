@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { ChevronRight, CheckCircle, Rocket, Target, Zap, Settings } from 'lucide-react';
+import iconLight from '../assets/icon-light.png';
+import iconDark from '../assets/icon-dark.png';
 
 interface OnboardingWizardProps {
     onComplete: () => void;
@@ -76,8 +78,9 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                     {/* Step 1: Welcome */}
                     {step === 1 && (
                         <div className="text-center">
-                            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-indigo-50 mb-3">
-                                <Rocket className="h-6 w-6 text-indigo-500" />
+                            <div className="inline-flex items-center justify-center mb-4">
+                                <img src={iconLight} alt="Extenda" className="h-14 w-14 dark:hidden" />
+                                <img src={iconDark} alt="Extenda" className="h-14 w-14 hidden dark:block" />
                             </div>
                             <h2 className="text-lg font-bold text-gray-900 mb-1">Welcome to Extenda!</h2>
                             <p className="text-xs text-gray-500 mb-4 leading-relaxed">
@@ -187,8 +190,9 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                     {/* Step 5: Done */}
                     {step === 5 && (
                         <div className="text-center">
-                            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-green-50 mb-3">
-                                <CheckCircle className="h-6 w-6 text-green-500" />
+                            <div className="inline-flex items-center justify-center mb-4">
+                                <img src={iconLight} alt="Extenda" className="h-12 w-12 dark:hidden" />
+                                <img src={iconDark} alt="Extenda" className="h-12 w-12 hidden dark:block" />
                             </div>
                             <h2 className="text-base font-bold text-gray-900 mb-1">You're all set!</h2>
                             <p className="text-xs text-gray-500 mb-3">Try your first command:</p>

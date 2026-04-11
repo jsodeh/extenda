@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { toolRegistry } from '../tools/registry.js';
 import { adapterRegistry } from '../adapters/index.js';
 import { knowledgeBase } from './knowledge-base.js';
-import { generateText } from '../lib/gemini.js';
+import { generateText, ModelConfig } from '../lib/models.js';
 import { WorkflowDependencyResolver } from '../lib/workflow-dependencies.js';
 import { EVENTS_SERVER, EVENTS_CLIENT, User, Workflow, Execution, WorkflowStep, ToolExecutionResult } from '@extenda/shared';
 import { db } from '../db/index.js';
@@ -55,7 +55,7 @@ export class AgentOrchestrator {
         }
     }
 
-    async plan(intent: string, user: User, sessionId: string): Promise<Workflow> {
+    async plan(intent: string, user: User, sessionId: string, modelConfig?: ModelConfig): Promise<Workflow> {
         this.initializeAgents(); // Ensure initialized
         console.log(`Planning workflow for intent: ${intent}`);
 
@@ -86,7 +86,7 @@ export class AgentOrchestrator {
         console.log(`[Planner] Available tools from all agents: ${allAgentTools.length}`);
 
         // RAG: Search knowledge base
-        const relevantDocs = await knowledgeBase.search(user.id, intent);
+        const relevantDocs = await knowledgeBase.search(user.id, intent, 3, modelConfig);
         const knowledgeContext = relevantDocs.length > 0
             ? `\n\nRelevant Knowledge Base Information:\n${relevantDocs.join('\n---\n')}`
             : '';
@@ -135,6 +135,24 @@ ${aiTools}
 User Name: ${user.name || 'User'}
 User Email: ${user.email}` : '';
 
+        let modeDirectives = '';
+        if (modelConfig?.mode === 'Fast') {
+            modeDirectives = `
+      CRITICAL FAST MODE DIRECTIVES:
+      - You must fulfill the request immediately in 1-2 steps maximum.
+      - Do not perform extensive research before acting.
+      - Bypass intermediate checkpoints: Set "requiresApproval": false for all steps unless it's a highly destructive action (e.g. deleting files, sending broad emails).
+      `;
+        } else if (modelConfig?.mode === 'Planning') {
+            modeDirectives = `
+      CRITICAL PLANNING MODE DIRECTIVES:
+      - You must break the task down into thorough, logical steps.
+      - Perform deep searches and utilize knowledge bases thoroughly before executing.
+      - Take your time to build a robust dependency graph.
+      - Enforce rigorous approval checkpoints by setting "requiresApproval": true before critical actions.
+      `;
+        }
+
         const prompt = `
       ${persona}
       Current Time: ${new Date().toISOString()}${userContext}
@@ -142,6 +160,7 @@ User Email: ${user.email}` : '';
       
       Available Tools (Use these exact names):
       ${fullToolsContext}
+      ${modeDirectives}
       
       Goal: Create a JSON execution plan to fulfill the User Request.
 
@@ -195,7 +214,7 @@ User Email: ${user.email}` : '';
             );
 
             const aiResponse = await Promise.race([
-                generateText(prompt),
+                generateText(prompt, modelConfig),
                 timeoutPromise
             ]) as string;
 
@@ -269,7 +288,7 @@ User Email: ${user.email}` : '';
         }
     }
 
-    async execute(execution: Execution, workflow: Workflow, requiresApproval: boolean = false) {
+    async execute(execution: Execution, workflow: Workflow, requiresApproval: boolean = false, modelConfig?: ModelConfig) {
         console.log(`Starting execution: ${execution.id}`);
         this.activeExecutions.set(execution.id, execution);
 
@@ -295,10 +314,10 @@ User Email: ${user.email}` : '';
         // HITL: Global check removed in favor of step-level approval in runWorkflowLoop
         // if (requiresApproval) { ... }
 
-        await this.runWorkflowLoop(execution, workflow);
+        await this.runWorkflowLoop(execution, workflow, undefined, modelConfig);
     }
 
-    async resume(executionId: string, approved: boolean) {
+    async resume(executionId: string, approved: boolean, modelConfig?: ModelConfig) {
         console.log(`Resuming execution ${executionId}, approved: ${approved}`);
         let execution = this.activeExecutions.get(executionId);
         let storedWorkflow: Workflow | undefined;
@@ -397,7 +416,7 @@ User Email: ${user.email}` : '';
                     !completedStepIds.has(s.id) && s.requiresApproval
                 );
 
-                await this.runWorkflowLoop(execution, storedWorkflow, pausedStep?.id);
+                await this.runWorkflowLoop(execution, storedWorkflow, pausedStep?.id, modelConfig);
             } else {
                 console.error("Workflow definition missing for resume");
             }
@@ -413,7 +432,7 @@ User Email: ${user.email}` : '';
         }
     }
 
-    private async runWorkflowLoop(execution: Execution, workflow: Workflow, approvedStepId?: string) {
+    private async runWorkflowLoop(execution: Execution, workflow: Workflow, approvedStepId?: string, modelConfig?: ModelConfig) {
         try {
             // Resolve dependencies and get execution batches
             const steps = workflow.definition.steps as WorkflowStep[];
@@ -586,7 +605,7 @@ Generate a brief, friendly, conversational response summarizing the result for t
 - If it's a form, provide the link.
 Do NOT return JSON. Return a natural language response.`;
 
-                        const summary = await generateText(summaryPrompt);
+                        const summary = await generateText(summaryPrompt, modelConfig);
 
                         // Send the friendly summary to the user
                         await this.addMessage(execution.context.sessionId, 'assistant', summary);

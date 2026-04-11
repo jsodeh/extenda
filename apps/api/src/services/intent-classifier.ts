@@ -1,4 +1,4 @@
-import { generateText } from '../lib/gemini.js';
+import { generateText, ModelConfig } from '../lib/models.js';
 
 export type IntentType = 'conversational' | 'simple_command' | 'workflow_request' | 'hybrid';
 
@@ -111,7 +111,7 @@ export class IntentClassifier {
         return null;
     }
 
-    async classify(message: string, conversationHistory: string[] = []): Promise<IntentClassification> {
+    async classify(message: string, conversationHistory: string[] = [], modelConfig?: ModelConfig): Promise<IntentClassification> {
         // 1. Try simple command match first for immediate execution
         const simpleResult = this.simpleCommandMatch(message);
         if (simpleResult) {
@@ -153,7 +153,7 @@ Return ONLY valid JSON, no markdown.`;
             );
 
             const response = await Promise.race([
-                generateText(prompt),
+                generateText(prompt, modelConfig),
                 timeoutPromise
             ]) as string;
 

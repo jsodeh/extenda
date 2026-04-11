@@ -3,14 +3,17 @@ import { Send, Mic, Paperclip, X, FileText, Image as ImageIcon, Music, Video, Fi
 import { cn } from '../../lib/utils';
 import { useVoiceMode } from '../../hooks/useVoiceMode';
 import { VoiceOverlay } from '../voice/VoiceOverlay';
+import { ModelSelectDropdown, Provider } from './ModelSelectDropdown';
+import { ModeSelectDropdown, ExecutionMode } from './ModeSelectDropdown';
+import { ModelConfig } from '@extenda/shared';
 
 interface InputAreaProps {
-    onSend: (message: string, files?: File[]) => void;
+    onSend: (message: string, files?: File[], modelConfig?: ModelConfig) => void;
     disabled?: boolean;
     sessionId?: string | null;
     accessToken?: string | null;
-    geminiApiKey?: string;
     onTranscript?: (text: string, role: 'user' | 'assistant') => void;
+    initialValue?: string;
 }
 
 // File type to icon mapping
@@ -30,8 +33,22 @@ const getFileExtension = (filename: string) => {
 };
 
 
-export function InputArea({ onSend, disabled, sessionId, accessToken, geminiApiKey, onTranscript }: InputAreaProps) {
+export function InputArea({ onSend, disabled, sessionId, accessToken, onTranscript, initialValue }: InputAreaProps) {
     const [input, setInput] = useState('');
+
+    useEffect(() => {
+        if (initialValue) {
+            setInput(initialValue);
+            // Focus and resize
+            setTimeout(() => {
+                if (textareaRef.current) {
+                    textareaRef.current.focus();
+                    textareaRef.current.style.height = 'auto';
+                    textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`;
+                }
+            }, 0);
+        }
+    }, [initialValue]);
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [filePreviews, setFilePreviews] = useState<Map<string, string>>(new Map());
     const [showVoiceOverlay, setShowVoiceOverlay] = useState(false);
@@ -39,11 +56,55 @@ export function InputArea({ onSend, disabled, sessionId, accessToken, geminiApiK
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // BYOK State
+    const [activeProvider, setActiveProvider] = useState<Provider>('google');
+    const [activeModel, setActiveModel] = useState<string>('gemini-2.0-flash');
+    const [mode, setMode] = useState<ExecutionMode>('Fast');
+    const [providerKeys, setProviderKeys] = useState<{ google: string, openai: string, anthropic: string, ollama: string }>({ google: '', openai: '', anthropic: '', ollama: '' });
+    const [defaultModels, setDefaultModels] = useState<Record<string, string>>({});
+    const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434');
+
+    // Load BYOK config from local storage
+    useEffect(() => {
+        if (typeof chrome !== 'undefined' && chrome.storage) {
+            chrome.storage.local.get([
+                'extenda_provider_keys', 
+                'extenda_active_provider', 
+                'extenda_default_models',
+                'extenda_ollama_url'
+            ], (result) => {
+                if (result.extenda_provider_keys) setProviderKeys(result.extenda_provider_keys);
+                
+                const provider = (result.extenda_active_provider as Provider) || 'google';
+                setActiveProvider(provider);
+                
+                if (result.extenda_default_models) {
+                    setDefaultModels(result.extenda_default_models);
+                    setActiveModel(result.extenda_default_models[provider] || 'gemini-2.0-flash');
+                }
+                
+                if (result.extenda_ollama_url) setOllamaUrl(result.extenda_ollama_url);
+            });
+        }
+    }, []);
+
+    // Save active provider/model change to local storage instantly
+    const handleProviderModelChange = (newProvider: Provider, newModel: string) => {
+        setActiveProvider(newProvider);
+        setActiveModel(newModel);
+        if (typeof chrome !== 'undefined' && chrome.storage) {
+            chrome.storage.local.set({ 
+                extenda_active_provider: newProvider,
+                extenda_default_models: { ...defaultModels, [newProvider]: newModel }
+            });
+        }
+    };
+
     // Voice mode hook - only enable if API key is provided
     const voice = useVoiceMode({
         sessionId: sessionId || null,
         accessToken: accessToken || null,
-        apiKey: geminiApiKey || '',
+        apiKey: providerKeys.google || '',
         onTranscript: (text, role) => {
             if (role === 'user') {
                 setInput(text);
@@ -70,7 +131,16 @@ export function InputArea({ onSend, disabled, sessionId, accessToken, geminiApiK
         e?.preventDefault();
         if ((!input.trim() && selectedFiles.length === 0) || disabled) return;
 
-        onSend(input, selectedFiles.length > 0 ? selectedFiles : undefined);
+        // Construct modelConfig for BYOK
+        const modelConfig: ModelConfig = {
+            provider: activeProvider,
+            model: activeModel,
+            apiKey: providerKeys[activeProvider] || '',
+            baseURL: activeProvider === 'ollama' ? ollamaUrl : undefined,
+            mode: mode
+        };
+
+        onSend(input, selectedFiles.length > 0 ? selectedFiles : undefined, modelConfig);
 
         setInput('');
         setSelectedFiles([]);
@@ -231,34 +301,34 @@ export function InputArea({ onSend, disabled, sessionId, accessToken, geminiApiK
                                 type="button"
                                 onClick={() => fileInputRef.current?.click()}
                                 className={cn(
-                                    "p-2 rounded-lg hover:bg-muted transition-colors",
+                                    "p-1.5 rounded-lg hover:bg-muted transition-colors",
                                     selectedFiles.length > 0 ? "text-primary" : "text-muted-foreground"
                                 )}
                                 title="Attach files"
                             >
-                                <Paperclip size={18} />
+                                <Paperclip size={16} />
                             </button>
 
                             {/* Voice Mode Button */}
                             <button
                                 type="button"
                                 onClick={() => {
-                                    if (!geminiApiKey) return;
+                                    if (!providerKeys.google) return;
                                     setShowVoiceOverlay(true);
                                     if (!voice.isActive) {
                                         voice.startVoiceMode();
                                     }
                                 }}
-                                disabled={!geminiApiKey}
+                                disabled={!providerKeys.google}
                                 className={cn(
-                                    "p-2 rounded-lg transition-all duration-200",
-                                    !geminiApiKey ? "opacity-50 cursor-not-allowed text-muted-foreground" :
+                                    "p-1.5 rounded-lg transition-all duration-200",
+                                    !providerKeys.google ? "opacity-30 cursor-not-allowed text-muted-foreground" :
                                         voice.isActive ? "bg-primary text-primary-foreground" :
                                             "text-muted-foreground hover:bg-muted"
                                 )}
-                                title={!geminiApiKey ? "Voice mode connecting..." : voice.isActive ? "Voice mode active" : "Start voice mode"}
+                                title={!providerKeys.google ? "Configure Google API Key in Settings to enable voice" : voice.isActive ? "Voice mode active" : "Start voice mode"}
                             >
-                                <Mic size={18} />
+                                <Mic size={16} />
                             </button>
 
                             {selectedFiles.length > 0 && (
@@ -268,19 +338,30 @@ export function InputArea({ onSend, disabled, sessionId, accessToken, geminiApiK
                             )}
                         </div>
 
-                        {/* Right Action: Send */}
-                        <button
-                            onClick={() => handleSubmit()}
-                            disabled={((!input.trim() && selectedFiles.length === 0) || disabled)}
-                            className={cn(
-                                "p-2 rounded-lg transition-all duration-200",
-                                (input.trim() || selectedFiles.length > 0)
-                                    ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
-                                    : "bg-muted text-muted-foreground cursor-not-allowed opacity-50"
-                            )}
-                        >
-                            <Send size={16} />
-                        </button>
+                        {/* Middle/Right Actions */}
+                        <div className="flex items-center gap-1.5">
+                            {/* BYOK Dropdowns */}
+                            <ModeSelectDropdown value={mode} onChange={setMode} />
+                            <ModelSelectDropdown 
+                                provider={activeProvider} 
+                                model={activeModel} 
+                                onChange={handleProviderModelChange} 
+                            />
+
+                            {/* Send Button */}
+                            <button
+                                onClick={() => handleSubmit()}
+                                disabled={((!input.trim() && selectedFiles.length === 0) || disabled)}
+                                className={cn(
+                                    "p-1.5 rounded-lg transition-all duration-200 shadow-sm flex items-center justify-center shrink-0",
+                                    (input.trim() || selectedFiles.length > 0)
+                                        ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                                        : "bg-muted text-muted-foreground cursor-not-allowed opacity-50"
+                                )}
+                            >
+                                <Send size={15} />
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

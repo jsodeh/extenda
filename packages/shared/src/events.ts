@@ -1,4 +1,4 @@
-import { Execution, Step, SessionContext, Tab } from './types';
+import { Execution, Step, SessionContext, Tab, ModelConfig } from './types';
 
 // Client -> Server Events
 export const EVENTS_CLIENT = {
@@ -31,11 +31,13 @@ export interface WorkflowStartPayload {
     intent: string;
     context: SessionContext;
     sessionId?: string;
+    modelConfig?: ModelConfig;
 }
 
 export interface WorkflowResumePayload {
     executionId: string;
     approved: boolean;
+    modelConfig?: ModelConfig;
 }
 
 export interface WorkflowApprovePayload {

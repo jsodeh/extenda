@@ -3,7 +3,7 @@
  * Runs on backend using Gemini
  */
 
-import { generateText } from '../lib/gemini.js';
+import { generateText, ModelConfig } from '../lib/models.js';
 
 export interface AIProcessorParams {
     action: 'summarize' | 'categorize' | 'extract' | 'analyze';
@@ -25,21 +25,21 @@ export class AIProcessor {
     /**
      * Summarize content
      */
-    static async summarize(content: string, maxLength: number = 200): Promise<string> {
+    static async summarize(content: string, maxLength: number = 200, modelConfig?: ModelConfig): Promise<string> {
         const prompt = `Summarize the following content in ${maxLength} characters or less:
 
 ${content}
 
 Summary:`;
 
-        const response = await generateText(prompt);
+        const response = await generateText(prompt, modelConfig);
         return response.trim();
     }
 
     /**
      * Categorize content
      */
-    static async categorize(content: string, categories: string[]): Promise<string> {
+    static async categorize(content: string, categories: string[], modelConfig?: ModelConfig): Promise<string> {
         const prompt = `Categorize the following content into one of these categories: ${categories.join(', ')}
 
 Content:
@@ -47,14 +47,14 @@ ${content}
 
 Category:`;
 
-        const response = await generateText(prompt);
+        const response = await generateText(prompt, modelConfig);
         return response.trim();
     }
 
     /**
      * Extract specific information
      */
-    static async extract(content: string, fields: string[]): Promise<Record<string, string>> {
+    static async extract(content: string, fields: string[], modelConfig?: ModelConfig): Promise<Record<string, string>> {
         const prompt = `Extract the following information from the content:
 ${fields.map(f => `- ${f}`).join('\n')}
 
@@ -63,7 +63,7 @@ ${content}
 
 Return the results in JSON format with keys: ${fields.join(', ')}`;
 
-        const response = await generateText(prompt);
+        const response = await generateText(prompt, modelConfig);
 
         try {
             return JSON.parse(response);
@@ -80,29 +80,31 @@ Return the results in JSON format with keys: ${fields.join(', ')}`;
     /**
      * General analysis
      */
-    static async analyze(content: string): Promise<string> {
+    static async analyze(content: string, modelConfig?: ModelConfig): Promise<string> {
         const prompt = `Analyze the following content and provide insights:
 
 ${content}
 
 Analysis:`;
 
-        const response = await generateText(prompt);
+        const response = await generateText(prompt, modelConfig);
         return response.trim();
     }
 
     /**
      * Execute AIProcessor action
      */
-    static async execute(params: AIProcessorParams): Promise<AIProcessorResult> {
+    static async execute(params: AIProcessorParams, executionContext?: any): Promise<AIProcessorResult> {
         try {
             let result: any;
+            const modelConfig = executionContext?.modelConfig;
 
             switch (params.action) {
                 case 'summarize':
                     result = await this.summarize(
                         params.content,
-                        params.options?.maxLength
+                        params.options?.maxLength,
+                        modelConfig
                     );
                     break;
 
@@ -112,7 +114,8 @@ Analysis:`;
                     }
                     result = await this.categorize(
                         params.content,
-                        params.options.categories
+                        params.options.categories,
+                        modelConfig
                     );
                     break;
 
@@ -122,12 +125,13 @@ Analysis:`;
                     }
                     result = await this.extract(
                         params.content,
-                        params.options.extractFields
+                        params.options.extractFields,
+                        modelConfig
                     );
                     break;
 
                 case 'analyze':
-                    result = await this.analyze(params.content);
+                    result = await this.analyze(params.content, modelConfig);
                     break;
 
                 default:
