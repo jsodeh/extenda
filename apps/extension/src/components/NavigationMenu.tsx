@@ -24,19 +24,19 @@ export default function NavigationMenu({ currentPage, onNavigate }: NavigationMe
             {/* Menu Toggle Button */}
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                className="p-2 rounded-lg hover:bg-muted transition-colors"
                 title="Menu"
             >
                 {isOpen ? (
-                    <X className="h-5 w-5 text-gray-600" />
+                    <X className="h-5 w-5 text-foreground" />
                 ) : (
-                    <Menu className="h-5 w-5 text-gray-600" />
+                    <Menu className="h-5 w-5 text-foreground" />
                 )}
             </button>
 
             {/* Dropdown Menu */}
             {isOpen && (
-                <div className="absolute right-4 top-14 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50 min-w-[200px]">
+                <div className="absolute right-4 top-14 bg-card rounded-xl shadow-2xl border border-border py-2 z-50 min-w-[200px]">
                     {menuItems.map((item) => {
                         const Icon = item.icon;
                         const isActive = currentPage === item.id;
@@ -48,9 +48,9 @@ export default function NavigationMenu({ currentPage, onNavigate }: NavigationMe
                                     onNavigate(item.id);
                                     setIsOpen(false);
                                 }}
-                                className={`w-full flex items-center gap-3 px-4 py-2 text-left transition-colors ${isActive
-                                    ? 'bg-blue-50 text-blue-700'
-                                    : 'text-gray-700 hover:bg-gray-50'
+                                className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-all ${isActive
+                                    ? 'bg-primary/10 text-primary'
+                                    : 'text-foreground hover:bg-muted'
                                     }`}
                             >
                                 <Icon className="h-5 w-5" />

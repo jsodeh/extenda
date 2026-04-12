@@ -84,32 +84,35 @@ export function ChatMessage({ message, currentWorkflow, pendingStep, onApprove, 
 
     return (
         <div className={cn(
-            "group w-full py-2 border-b border-border/10",
-            isSystem ? "bg-muted/20" : "bg-transparent"
+            "group w-full py-4 border-b border-border/10",
+            isSystem ? "bg-muted/10 italic" : "bg-transparent"
         )}>
             <div className="max-w-3xl mx-auto px-4">
                 {/* Content Column - no avatar icons for cleaner alignment */}
-                <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-baseline justify-between">
-                        <span className="text-xs font-medium text-muted-foreground">
+                <div className="flex-1 min-w-0 space-y-1.5">
+                    <div className="flex items-baseline justify-between mb-0.5">
+                        <span className={cn(
+                            "text-[10px] uppercase font-bold tracking-widest",
+                            isUser ? "text-primary/70" : isSystem ? "text-muted-foreground/60" : "text-emerald-500/70"
+                        )}>
                             {isUser ? "You" : isSystem ? "System" : "Extenda"}
                         </span>
-                        <span className="text-[9px] text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span className="text-[9px] text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity">
                             {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                     </div>
 
-                    <div className="max-w-none text-foreground break-words leading-relaxed text-xs">
+                    <div className="max-w-none text-foreground break-words leading-relaxed text-[13px]">
                         {isError ? (
-                            <div className="text-destructive text-xs">
-                                <p className="font-medium flex items-center gap-1">
-                                    <AlertTriangle size={10} />
-                                    {isJsonError ? 'Error' : 'Error'}
+                            <div className="text-destructive text-[13px] bg-destructive/5 p-3 rounded-lg border border-destructive/10">
+                                <p className="font-bold flex items-center gap-1.5 uppercase tracking-tight text-[11px]">
+                                    <AlertTriangle size={12} strokeWidth={3} />
+                                    {isJsonError ? 'Execution Error' : 'System Error'}
                                 </p>
-                                <p className="mt-0.5 opacity-90">{displayContent}</p>
+                                <p className="mt-1 opacity-90">{displayContent}</p>
                             </div>
                         ) : message.content?.startsWith('✅ Step Completed') || message.content?.startsWith('❌ Step Failed') ? (
-                            <div className="text-[10px] font-mono">
+                            <div className="text-[11px] font-mono bg-muted/20 p-2 rounded-md italic border border-border/10">
                                 <p className="whitespace-pre-wrap">{displayContent}</p>
                             </div>
                         ) : (
@@ -118,19 +121,18 @@ export function ChatMessage({ message, currentWorkflow, pendingStep, onApprove, 
 
                         {/* File Attachments Display for User Messages */}
                         {isUser && message.attachments && message.attachments.length > 0 && (
-                            <div className="mt-2 flex flex-row gap-1.5 overflow-x-auto">
+                            <div className="mt-3 flex flex-wrap gap-2">
                                 {message.attachments.map((attachment, index) => {
                                     const FileIcon = getFileIcon(attachment.type);
-                                    const ext = attachment.name.split('.').pop()?.toUpperCase() || '';
                                     return (
                                         <div
                                             key={`${attachment.name}-${index}`}
-                                            className="flex items-center gap-1 px-1.5 py-0.5 bg-muted/50 rounded border border-border/50 flex-shrink-0"
+                                            className="flex items-center gap-2 px-2 py-1.5 bg-muted/40 rounded-lg border border-border/30 flex-shrink-0"
                                             title={attachment.name}
                                         >
-                                            <FileIcon size={10} className="text-muted-foreground flex-shrink-0" />
-                                            <span className="text-[8px] text-muted-foreground truncate max-w-[40px]">
-                                                {attachment.name.length > 8 ? attachment.name.slice(0, 6) + '..' : attachment.name}
+                                            <FileIcon size={12} className="text-primary" />
+                                            <span className="text-[10px] font-medium text-foreground truncate max-w-[100px]">
+                                                {attachment.name}
                                             </span>
                                         </div>
                                     );
@@ -140,7 +142,7 @@ export function ChatMessage({ message, currentWorkflow, pendingStep, onApprove, 
 
                         {/* Inline Plan View */}
                         {message.workflow && (
-                            <div className="mt-4 not-prose">
+                            <div className="mt-5 not-prose">
                                 <PlanView steps={currentWorkflow?.id === message.workflow.id
                                     ? currentWorkflow.steps
                                     : message.workflow.steps}
@@ -148,45 +150,47 @@ export function ChatMessage({ message, currentWorkflow, pendingStep, onApprove, 
 
                                 {/* Approval Controls */}
                                 {isPendingApproval && (
-                                    <div className="mt-4 flex flex-col gap-3 p-4 bg-yellow-50/50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/50 rounded-lg">
+                                    <div className="mt-4 flex flex-col gap-4 p-5 bg-amber-500/5 border border-amber-500/20 rounded-2xl shadow-sm">
                                         <div className="flex items-start justify-between">
-                                            <div className="flex items-start gap-3">
-                                                <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 shrink-0" />
+                                            <div className="flex items-start gap-4">
+                                                <div className="p-2 bg-amber-500/10 rounded-xl">
+                                                    <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+                                                </div>
                                                 <div>
-                                                    <h4 className="text-sm font-medium text-yellow-800 dark:text-yellow-500">
+                                                    <h4 className="text-sm font-bold text-foreground">
                                                         Approval Required
                                                     </h4>
-                                                    <p className="text-sm text-yellow-700 dark:text-yellow-600 mt-1">
-                                                        {pendingStep.tool} needs your permission to proceed.
+                                                    <p className="text-xs text-muted-foreground mt-1">
+                                                        Action: <span className="font-mono text-primary">{pendingStep.tool}</span>
                                                     </p>
                                                 </div>
                                             </div>
                                             <button
                                                 onClick={() => setIsExpanded(!isExpanded)}
-                                                className="p-1 hover:bg-yellow-100 dark:hover:bg-yellow-900/30 rounded-full transition-colors"
+                                                className="p-1.5 hover:bg-muted rounded-full transition-colors"
                                             >
-                                                {isExpanded ? <ChevronUp className="w-4 h-4 text-yellow-600" /> : <ChevronDown className="w-4 h-4 text-yellow-600" />}
+                                                {isExpanded ? <ChevronUp className="w-5 h-5 text-muted-foreground" /> : <ChevronDown className="w-5 h-5 text-muted-foreground" />}
                                             </button>
                                         </div>
 
                                         {isExpanded && pendingStep.params && (
-                                            <div className="mt-2 text-xs font-mono bg-white/50 dark:bg-black/20 p-2 rounded max-h-40 overflow-y-auto">
+                                            <div className="mt-1 text-[11px] font-mono bg-background/50 border border-border/50 p-3 rounded-xl max-h-48 overflow-y-auto shadow-inner">
                                                 {JSON.stringify(pendingStep.params, null, 2)}
                                             </div>
                                         )}
 
-                                        <div className="flex gap-3 mt-1 pl-8">
-                                            <button
-                                                onClick={onReject}
-                                                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md text-sm font-medium transition-colors"
-                                            >
-                                                Reject
-                                            </button>
+                                        <div className="flex gap-3 pl-1">
                                             <button
                                                 onClick={onApprove}
-                                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm font-medium transition-colors"
+                                                className="px-5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-emerald-500/20 active:scale-95"
                                             >
                                                 Approve
+                                            </button>
+                                            <button
+                                                onClick={onReject}
+                                                className="px-5 py-2 bg-muted hover:bg-muted/80 text-foreground rounded-xl text-xs font-bold transition-all border border-border active:scale-95"
+                                            >
+                                                Reject
                                             </button>
                                         </div>
                                     </div>

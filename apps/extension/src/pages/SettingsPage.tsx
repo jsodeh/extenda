@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, ChevronRight, Save, Key, Zap, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Save, Key, CheckCircle2, Eye, EyeOff, Globe } from 'lucide-react';
 import IntegrationsPage from './IntegrationsPage';
 
 interface SettingsSection {
@@ -18,7 +18,6 @@ interface SettingsPageProps {
     onBack?: () => void;
 }
 
-// Map structure to store multiple keys securely in local storage
 interface KeyStorage {
     google: string;
     openai: string;
@@ -51,6 +50,7 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
     });
     const [selectedProvider, setSelectedProvider] = useState<keyof KeyStorage>('google');
     const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434');
+    const [showKey, setShowKey] = useState(false);
     
     // Legacy states
     const [autoExecute, setAutoExecute] = useState(false);
@@ -146,6 +146,7 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
         setDefaultModels(prev => ({ ...prev, [provider]: val }));
     };
 
+    // --- Provider Card ---
     const ProviderCard = ({ id, name, desc }: { id: keyof KeyStorage, name: string, desc: string }) => {
         const isActive = selectedProvider === id;
         const hasKey = id === 'ollama' 
@@ -153,52 +154,113 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
             : providerKeys[id]?.length > 10;
         
         return (
-            <div 
+            <button
+                type="button"
                 onClick={() => setSelectedProvider(id)}
-                className={`flex flex-col relative p-4 rounded-xl border-2 cursor-pointer transition-all min-h-[160px] ${
-                    isActive ? 'border-primary bg-primary/5 shadow-sm' : 'border-border bg-card hover:border-border/80 hover:bg-muted/30'
+                className={`w-full text-left p-3 rounded-xl border-2 transition-all ${
+                    isActive 
+                        ? 'border-primary bg-primary/10 shadow-md ring-1 ring-primary/30' 
+                        : 'border-border bg-card hover:border-muted-foreground/30'
                 }`}
             >
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between">
                     <h3 className={`font-semibold text-sm ${isActive ? 'text-primary' : 'text-foreground'}`}>{name}</h3>
-                    {hasKey && <CheckCircle2 className="w-4 h-4 text-emerald-500 bg-background rounded-full" />}
+                    {hasKey && <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />}
                 </div>
-                <p className="text-[10px] text-muted-foreground mb-3 h-6 line-clamp-2">{desc}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-1">{desc}</p>
+            </button>
+        );
+    };
+
+    // --- Render Active Provider Config ---
+    const renderProviderConfig = () => {
+        const id = selectedProvider;
+        const isOllama = id === 'ollama';
+
+        return (
+            <div className="mt-5 space-y-4 p-4 bg-card rounded-xl border border-border">
+                <h3 className="text-sm font-semibold text-foreground">
+                    {isOllama ? '🖥️ Ollama Local Setup' : `🔑 ${selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)} API Key`}
+                </h3>
                 
-                {isActive && (
-                    <div className="mt-auto space-y-2" onClick={(e) => e.stopPropagation()}>
-                        {id === 'ollama' ? (
+                {isOllama ? (
+                    <div className="space-y-2">
+                        <label className="block text-xs font-medium text-foreground">
+                            Base URL
+                        </label>
+                        <div className="relative">
+                            <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <input
                                 type="text"
-                                placeholder="Base URL (http://...)"
+                                placeholder="http://localhost:11434"
                                 value={ollamaUrl}
                                 onChange={(e) => setOllamaUrl(e.target.value)}
-                                className="bg-muted/50 block w-full px-3 py-1.5 border border-border rounded-lg text-[11px] text-foreground focus:ring-primary focus:border-primary placeholder-muted-foreground transition-all"
+                                className="w-full pl-10 pr-3 py-2.5 rounded-lg border-2 border-border bg-background text-sm font-mono focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
                             />
-                        ) : (
-                            <div className="relative">
-                                <Key className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                                <input
-                                    type="password"
-                                    placeholder="API Key"
-                                    value={providerKeys[id]}
-                                    onChange={(e) => handleKeyChange(id, e.target.value)}
-                                    className="bg-muted/50 block w-full pl-8 pr-3 py-1.5 border border-border rounded-lg text-[11px] text-foreground focus:ring-primary focus:border-primary placeholder-muted-foreground transition-all"
-                                />
-                            </div>
-                        )}
-                        
-                        <select
-                            value={defaultModels[id as keyof DefaultModels]}
-                            onChange={(e) => handleModelChange(id as keyof DefaultModels, e.target.value)}
-                            className="bg-background block w-full px-2 py-1.5 border border-border rounded-lg text-[11px] text-foreground focus:ring-primary focus:border-primary cursor-pointer"
-                        >
-                            {PROVIDER_MODELS[id as keyof typeof PROVIDER_MODELS].map(m => (
-                                <option key={m} value={m}>{m}</option>
-                            ))}
-                        </select>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">
+                            Enter your Ollama server URL. Default: http://localhost:11434
+                        </p>
+                    </div>
+                ) : (
+                    <div className="space-y-2">
+                        <label className="block text-xs font-medium text-foreground">
+                            API Key
+                        </label>
+                        <div className="relative">
+                            <Key className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <input
+                                type={showKey ? 'text' : 'password'}
+                                placeholder="Paste your API key here..."
+                                value={providerKeys[id]}
+                                onChange={(e) => handleKeyChange(id, e.target.value)}
+                                className="w-full pl-10 pr-10 py-2.5 rounded-lg border-2 border-border bg-background text-sm font-mono focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowKey(!showKey)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                                {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">
+                            Your key is stored locally in your browser. Never sent to our servers.
+                        </p>
                     </div>
                 )}
+
+                {/* Model Selection */}
+                <div className="space-y-2">
+                    <label className="block text-xs font-medium text-foreground">
+                        Default Model
+                    </label>
+                    <select
+                        value={defaultModels[id as keyof DefaultModels]}
+                        onChange={(e) => handleModelChange(id as keyof DefaultModels, e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-lg border-2 border-border bg-background text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none cursor-pointer transition-all"
+                    >
+                        {PROVIDER_MODELS[id as keyof typeof PROVIDER_MODELS].map(m => (
+                            <option key={m} value={m}>{m}</option>
+                        ))}
+                    </select>
+                </div>
+
+                {/* Current value indicator */}
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 border border-border/50">
+                    <div className={`w-2 h-2 rounded-full shrink-0 ${
+                        isOllama 
+                            ? (ollamaUrl.startsWith('http') ? 'bg-emerald-500' : 'bg-amber-500')
+                            : (providerKeys[id]?.length > 10 ? 'bg-emerald-500' : 'bg-amber-500')
+                    }`} />
+                    <span className="text-[10px] text-muted-foreground truncate">
+                        {isOllama 
+                            ? (ollamaUrl ? `URL: ${ollamaUrl}` : 'No URL configured') 
+                            : (providerKeys[id]?.length > 10 
+                                ? `Key: ${providerKeys[id].slice(0, 8)}${'•'.repeat(12)}` 
+                                : 'No API key configured')}
+                    </span>
+                </div>
             </div>
         );
     };
@@ -206,7 +268,7 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
     return (
         <div className="flex flex-col h-screen bg-background text-foreground">
             {/* Header */}
-            <div className="border-b border-border bg-background/80 backdrop-blur-md px-4 py-4 sticky top-0 z-10 flex items-center gap-3">
+            <div className="border-b border-border bg-card px-4 py-4 sticky top-0 z-10 flex items-center gap-3 shadow-sm">
                 <button
                     onClick={() => {
                         if (activeSection === 'root') {
@@ -217,22 +279,22 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                     }}
                     className="p-1.5 -ml-1.5 rounded-full hover:bg-muted transition-colors"
                 >
-                    <ArrowLeft className="h-5 w-5 text-muted-foreground hover:text-foreground" />
+                    <ArrowLeft className="h-5 w-5 text-foreground" />
                 </button>
-                <h1 className="text-[17px] font-semibold text-foreground tracking-tight">
+                <h1 className="text-base font-semibold text-foreground tracking-tight">
                     {activeSection === 'root' ? 'Settings' : SECTIONS.find(s => s.id === activeSection)?.label}
                 </h1>
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto w-full max-w-2xl mx-auto">
+            <div className="flex-1 overflow-y-auto">
                 {activeSection === 'root' ? (
-                    <div className="p-4 space-y-2.5">
+                    <div className="p-4 space-y-2">
                         {SECTIONS.map((section) => (
                             <button
                                 key={section.id}
                                 onClick={() => setActiveSection(section.id)}
-                                className="w-full flex items-center justify-between p-4 bg-card rounded-xl shadow-sm border border-border hover:border-primary/20 hover:shadow-md transition-all group"
+                                className="w-full flex items-center justify-between p-4 bg-card rounded-xl border border-border hover:border-primary/30 hover:shadow-md transition-all group"
                             >
                                 <span className="font-medium text-sm text-foreground">{section.label}</span>
                                 <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
@@ -240,7 +302,7 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                         ))}
                     </div>
                 ) : (
-                    <div className="h-full flex flex-col">
+                    <div className="flex flex-col min-h-full">
                         {activeSection === 'integrations' && (
                             <div className="flex-1 overflow-hidden">
                                 <IntegrationsPage />
@@ -248,42 +310,46 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                         )}
 
                         {activeSection === 'model' && (
-                            <div className="p-5 space-y-6">
-                                <div className="space-y-1 w-full text-center sm:text-left">
+                            <div className="p-4 space-y-4">
+                                <div className="space-y-1">
                                     <h2 className="text-sm font-semibold text-foreground">
                                         {selectedProvider === 'ollama' ? 'Local AI Configuration' : 'Bring Your Own Key'}
                                     </h2>
                                     <p className="text-xs text-muted-foreground leading-relaxed">
                                         {selectedProvider === 'ollama' 
-                                            ? 'Extenda connects directly to your local Ollama instance. Ensure Ollama is running on your machine.' 
-                                            : 'Extenda runs securely on your own API keys. Keys are saved locally to your device and directly passed to the vendor.'}
+                                            ? 'Connect to your local Ollama instance. No API key needed.' 
+                                            : 'Keys are stored locally on your device. We never see or store them.'}
                                     </p>
                                 </div>
                                 
-                                <div className="grid grid-cols-2 gap-3 w-full">
-                                    <ProviderCard id="google" name="Google" desc="Access to Gemini 2.0 Flash & Pro." />
-                                    <ProviderCard id="openai" name="OpenAI" desc="Access to GPT-4o and o1 models." />
-                                    <ProviderCard id="anthropic" name="Anthropic" desc="Access to Claude 3.5 Sonnet." />
-                                    <ProviderCard id="ollama" name="Ollama" desc="Local LLMs on your own machine." />
+                                {/* Provider Selector */}
+                                <div className="grid grid-cols-2 gap-2">
+                                    <ProviderCard id="google" name="Google" desc="Gemini 2.0 Flash & Pro" />
+                                    <ProviderCard id="openai" name="OpenAI" desc="GPT-4o and o1 models" />
+                                    <ProviderCard id="anthropic" name="Anthropic" desc="Claude 3.5 Sonnet" />
+                                    <ProviderCard id="ollama" name="Ollama" desc="Local LLMs on your machine" />
                                 </div>
+
+                                {/* Active Provider Configuration */}
+                                {renderProviderConfig()}
                             </div>
                         )}
 
                         {activeSection === 'prompts' && (
-                            <div className="p-5 space-y-8">
+                            <div className="p-4 space-y-6">
                                 <div className="space-y-3">
                                     <label className="block text-sm font-medium text-foreground">
-                                        Response Target Stylings
+                                        Response Style
                                     </label>
-                                    <div className="grid grid-cols-2 gap-3">
+                                    <div className="grid grid-cols-2 gap-2">
                                         {['professional', 'casual', 'concise', 'detailed'].map((style) => (
                                             <button
                                                 key={style}
                                                 onClick={() => setPromptStyle(style)}
-                                                className={`px-4 py-3 rounded-xl border text-sm font-medium capitalize transition-all ${
+                                                className={`px-4 py-3 rounded-xl border-2 text-sm font-medium capitalize transition-all ${
                                                     promptStyle === style 
                                                         ? 'border-primary bg-primary text-primary-foreground shadow-md' 
-                                                        : 'border-border bg-card text-muted-foreground hover:border-primary/30 hover:text-foreground'
+                                                        : 'border-border bg-card text-foreground hover:border-primary/30'
                                                 }`}
                                             >
                                                 {style}
@@ -294,23 +360,24 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
 
                                 <div className="space-y-3">
                                     <label className="block text-sm font-medium text-foreground">
-                                        Global System Execution Prompt
+                                        Custom System Prompt
                                     </label>
                                     <textarea
                                         value={customPrompt}
                                         onChange={(e) => setCustomPrompt(e.target.value)}
-                                        placeholder="E.g. Always write code in Python. Always respond natively in Spanish. Do not use emojis."
-                                        rows={6}
-                                        className="w-full rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none shadow-sm placeholder:text-muted-foreground"
+                                        placeholder="E.g. Always write code in Python. Always respond in Spanish."
+                                        rows={5}
+                                        className="w-full rounded-xl border-2 border-border bg-background px-4 py-3 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all resize-none"
                                     />
-                                    <p className="text-xs text-muted-foreground">Injected into the orchestrator context block for every prompt.</p>
+                                    <p className="text-[10px] text-muted-foreground">Applied to every AI interaction.</p>
                                 </div>
                             </div>
                         )}
 
                         {activeSection === 'general' && (
-                            <div className="p-5 space-y-2">
-                                <div className="flex items-center justify-between p-4 bg-card rounded-xl border border-border shadow-sm">
+                            <div className="p-4 space-y-2">
+                                {/* Auto-execute toggle */}
+                                <div className="flex items-center justify-between p-4 bg-card rounded-xl border border-border">
                                     <div>
                                         <h4 className="text-sm font-medium text-foreground">Auto-execute Workflows</h4>
                                         <p className="text-xs text-muted-foreground mt-0.5">
@@ -318,14 +385,22 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                                         </p>
                                     </div>
                                     <button
+                                        type="button"
                                         onClick={() => setAutoExecute(!autoExecute)}
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${autoExecute ? 'bg-primary' : 'bg-muted'}`}
+                                        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border-2 transition-colors ${
+                                            autoExecute ? 'bg-primary border-primary' : 'bg-muted border-border'
+                                        }`}
                                     >
-                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-background ring-0 transition-transform ${autoExecute ? 'translate-x-[22px]' : 'translate-x-1'}`} />
+                                        <span className={`inline-block h-4 w-4 transform rounded-full transition-transform ${
+                                            autoExecute 
+                                                ? 'translate-x-[22px] bg-primary-foreground' 
+                                                : 'translate-x-[2px] bg-muted-foreground'
+                                        }`} />
                                     </button>
                                 </div>
 
-                                <div className="flex items-center justify-between p-4 bg-card rounded-xl border border-border shadow-sm">
+                                {/* Push Notifications toggle */}
+                                <div className="flex items-center justify-between p-4 bg-card rounded-xl border border-border">
                                     <div>
                                         <h4 className="text-sm font-medium text-foreground">Push Notifications</h4>
                                         <p className="text-xs text-muted-foreground mt-0.5">
@@ -333,27 +408,34 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                                         </p>
                                     </div>
                                     <button
+                                        type="button"
                                         onClick={() => setNotifications(!notifications)}
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${notifications ? 'bg-primary' : 'bg-muted'}`}
+                                        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border-2 transition-colors ${
+                                            notifications ? 'bg-primary border-primary' : 'bg-muted border-border'
+                                        }`}
                                     >
-                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-background ring-0 transition-transform ${notifications ? 'translate-x-[22px]' : 'translate-x-1'}`} />
+                                        <span className={`inline-block h-4 w-4 transform rounded-full transition-transform ${
+                                            notifications 
+                                                ? 'translate-x-[22px] bg-primary-foreground' 
+                                                : 'translate-x-[2px] bg-muted-foreground'
+                                        }`} />
                                     </button>
                                 </div>
                             </div>
                         )}
 
-                        {/* Save Button */}
+                        {/* Save Button - always visible except on integrations */}
                         {activeSection !== 'integrations' && (
-                            <div className="p-5 mt-auto">
+                            <div className="p-4 mt-auto sticky bottom-0 bg-background border-t border-border">
                                 <button
                                     onClick={handleSave}
-                                    className={`w-full flex justify-center items-center gap-2 py-3.5 px-4 rounded-xl shadow-lg font-semibold text-sm transition-all focus:outline-none focus:ring-4 focus:ring-primary/20 ${saved
-                                        ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-                                        : 'bg-foreground text-background hover:opacity-90 active:scale-95'
-                                        }`}
+                                    className={`w-full flex justify-center items-center gap-2 py-3 px-4 rounded-xl font-semibold text-sm transition-all active:scale-[0.98] ${saved
+                                        ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20'
+                                        : 'bg-primary text-primary-foreground shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30'
+                                    }`}
                                 >
                                     {saved ? <CheckCircle2 className="w-5 h-5" /> : <Save className="w-5 h-5" />}
-                                    <span>{saved ? 'Preferences Saved' : 'Save & Sync Settings'}</span>
+                                    <span>{saved ? 'Saved ✓' : 'Save & Sync Settings'}</span>
                                 </button>
                             </div>
                         )}
