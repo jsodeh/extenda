@@ -14,10 +14,6 @@ const SECTIONS: SettingsSection[] = [
     { id: 'general', label: 'General' },
 ];
 
-interface SettingsPageProps {
-    onBack?: () => void;
-}
-
 interface KeyStorage {
     google: string;
     openai: string;
@@ -38,6 +34,151 @@ const PROVIDER_MODELS = {
     anthropic: ['claude-3-5-sonnet-latest', 'claude-3-opus-latest', 'claude-3-haiku-20240307'],
     ollama: ['llama3', 'gemma3:4b', 'mistral', 'codellama', 'phi3']
 };
+
+// --- Helper Components Moved Outside to Prevent Focus Loss ---
+
+const ProviderCard = ({ 
+    id, 
+    name, 
+    desc, 
+    isActive, 
+    hasKey, 
+    onSelect 
+}: { 
+    id: keyof KeyStorage, 
+    name: string, 
+    desc: string,
+    isActive: boolean,
+    hasKey: boolean,
+    onSelect: (id: keyof KeyStorage) => void
+}) => {
+    return (
+        <button
+            type="button"
+            onClick={() => onSelect(id)}
+            className={`w-full text-left p-3 rounded-xl border-2 transition-all ${
+                isActive 
+                    ? 'border-primary bg-primary/10 shadow-md ring-1 ring-primary/30' 
+                    : 'border-border bg-card hover:border-muted-foreground/30'
+            }`}
+        >
+            <div className="flex items-center justify-between">
+                <h3 className={`font-semibold text-sm ${isActive ? 'text-primary' : 'text-foreground'}`}>{name}</h3>
+                {hasKey && <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />}
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-1">{desc}</p>
+        </button>
+    );
+};
+
+const ProviderConfig = ({
+    selectedProvider,
+    ollamaUrl,
+    setOllamaUrl,
+    providerKeys,
+    handleKeyChange,
+    showKey,
+    setShowKey,
+    defaultModels,
+    handleModelChange
+}: {
+    selectedProvider: keyof KeyStorage,
+    ollamaUrl: string,
+    setOllamaUrl: (val: string) => void,
+    providerKeys: KeyStorage,
+    handleKeyChange: (provider: keyof KeyStorage, val: string) => void,
+    showKey: boolean,
+    setShowKey: (val: boolean) => void,
+    defaultModels: DefaultModels,
+    handleModelChange: (provider: keyof DefaultModels, val: string) => void
+}) => {
+    const isOllama = selectedProvider === 'ollama';
+
+    return (
+        <div className="mt-5 space-y-4 p-4 bg-card rounded-xl border border-border">
+            <h3 className="text-sm font-semibold text-foreground">
+                {isOllama ? '🖥️ Ollama Local Setup' : `🔑 ${selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)} API Key`}
+            </h3>
+            
+            {isOllama ? (
+                <div className="space-y-2">
+                    <label className="block text-xs font-medium text-foreground">
+                        Base URL
+                    </label>
+                    <div className="relative">
+                        <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <input
+                            type="text"
+                            placeholder="http://localhost:11434"
+                            value={ollamaUrl}
+                            onChange={(e) => setOllamaUrl(e.target.value)}
+                            className="w-full pl-10 pr-3 py-2.5 rounded-lg border-2 border-border bg-background text-foreground text-sm font-mono focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                        />
+                    </div>
+                </div>
+            ) : (
+                <div className="space-y-2">
+                    <label className="block text-xs font-medium text-foreground">
+                        API Key
+                    </label>
+                    <div className="relative">
+                        <Key className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <input
+                            type={showKey ? 'text' : 'password'}
+                            placeholder="Paste your API key here..."
+                            value={providerKeys[selectedProvider]}
+                            onChange={(e) => handleKeyChange(selectedProvider, e.target.value)}
+                            className="w-full pl-10 pr-10 py-2.5 rounded-lg border-2 border-border bg-background text-foreground text-sm font-mono focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                        />
+                        <button
+                            type="button"
+                            onClick={() => setShowKey(!showKey)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                            {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            <div className="space-y-2">
+                <label className="block text-xs font-medium text-foreground">
+                    Default Model
+                </label>
+                <select
+                    value={defaultModels[selectedProvider as keyof DefaultModels]}
+                    onChange={(e) => handleModelChange(selectedProvider as keyof DefaultModels, e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-lg border-2 border-border bg-background text-foreground text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none cursor-pointer transition-all"
+                >
+                    {PROVIDER_MODELS[selectedProvider as keyof typeof PROVIDER_MODELS].map(m => (
+                        <option key={m} value={m}>{m}</option>
+                    ))}
+                </select>
+            </div>
+
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/30 border border-border/50">
+                <div className={`w-2 h-2 rounded-full shrink-0 ${
+                    isOllama 
+                        ? (ollamaUrl.startsWith('http') ? 'bg-emerald-500' : 'bg-amber-500')
+                        : (providerKeys[selectedProvider]?.length > 10 ? 'bg-emerald-500' : 'bg-amber-500')
+                }`} />
+                <span className="text-[10px] text-muted-foreground truncate font-medium">
+                    {isOllama 
+                        ? (ollamaUrl ? `URL: ${ollamaUrl}` : 'No URL configured') 
+                        : (providerKeys[selectedProvider]?.length > 10 
+                            ? `Key: ${providerKeys[selectedProvider].slice(0, 8)}${'•'.repeat(12)}` 
+                            : 'No API key configured')}
+                </span>
+            </div>
+        </div>
+    );
+};
+
+// --- Main Page ---
+
+interface SettingsPageProps {
+    onBack?: () => void;
+}
 
 export default function SettingsPage({ onBack }: SettingsPageProps) {
     const [activeSection, setActiveSection] = useState('root');
@@ -62,7 +203,6 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
     useEffect(() => {
-        // Load API keys from Chrome local storage
         if (typeof chrome !== 'undefined' && chrome.storage) {
             chrome.storage.local.get([
                 'extenda_provider_keys', 
@@ -80,7 +220,6 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
         const fetchPreferences = async () => {
             const token = localStorage.getItem('accessToken');
             if (!token) return;
-
             try {
                 const response = await fetch(`${API_URL}/api/preferences`, {
                     headers: { 'Authorization': `Bearer ${token}` }
@@ -98,7 +237,6 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
     }, []);
 
     const handleSave = async () => {
-        // 1. Save Keys Locally
         if (typeof chrome !== 'undefined' && chrome.storage) {
             await chrome.storage.local.set({ 
                 extenda_provider_keys: providerKeys,
@@ -108,7 +246,6 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
             });
         }
 
-        // 2. Save Preferences to Backend
         const token = localStorage.getItem('accessToken');
         if (!token) {
             setSaved(true);
@@ -123,12 +260,8 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({
-                    customPrompt,
-                    promptStyle,
-                })
+                body: JSON.stringify({ customPrompt, promptStyle })
             });
-
             if (response.ok) {
                 setSaved(true);
                 setTimeout(() => setSaved(false), 2000);
@@ -144,125 +277,6 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
 
     const handleModelChange = (provider: keyof DefaultModels, val: string) => {
         setDefaultModels(prev => ({ ...prev, [provider]: val }));
-    };
-
-    // --- Provider Card ---
-    const ProviderCard = ({ id, name, desc }: { id: keyof KeyStorage, name: string, desc: string }) => {
-        const isActive = selectedProvider === id;
-        const hasKey = id === 'ollama' 
-            ? ollamaUrl.startsWith('http') 
-            : providerKeys[id]?.length > 10;
-        
-        return (
-            <button
-                type="button"
-                onClick={() => setSelectedProvider(id)}
-                className={`w-full text-left p-3 rounded-xl border-2 transition-all ${
-                    isActive 
-                        ? 'border-primary bg-primary/10 shadow-md ring-1 ring-primary/30' 
-                        : 'border-border bg-card hover:border-muted-foreground/30'
-                }`}
-            >
-                <div className="flex items-center justify-between">
-                    <h3 className={`font-semibold text-sm ${isActive ? 'text-primary' : 'text-foreground'}`}>{name}</h3>
-                    {hasKey && <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />}
-                </div>
-                <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-1">{desc}</p>
-            </button>
-        );
-    };
-
-    // --- Render Active Provider Config ---
-    const renderProviderConfig = () => {
-        const id = selectedProvider;
-        const isOllama = id === 'ollama';
-
-        return (
-            <div className="mt-5 space-y-4 p-4 bg-card rounded-xl border border-border">
-                <h3 className="text-sm font-semibold text-foreground">
-                    {isOllama ? '🖥️ Ollama Local Setup' : `🔑 ${selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)} API Key`}
-                </h3>
-                
-                {isOllama ? (
-                    <div className="space-y-2">
-                        <label className="block text-xs font-medium text-foreground">
-                            Base URL
-                        </label>
-                        <div className="relative">
-                            <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <input
-                                type="text"
-                                placeholder="http://localhost:11434"
-                                value={ollamaUrl}
-                                onChange={(e) => setOllamaUrl(e.target.value)}
-                                className="w-full pl-10 pr-3 py-2.5 rounded-lg border-2 border-border bg-background text-sm font-mono focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
-                            />
-                        </div>
-                        <p className="text-[10px] text-muted-foreground">
-                            Enter your Ollama server URL. Default: http://localhost:11434
-                        </p>
-                    </div>
-                ) : (
-                    <div className="space-y-2">
-                        <label className="block text-xs font-medium text-foreground">
-                            API Key
-                        </label>
-                        <div className="relative">
-                            <Key className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <input
-                                type={showKey ? 'text' : 'password'}
-                                placeholder="Paste your API key here..."
-                                value={providerKeys[id]}
-                                onChange={(e) => handleKeyChange(id, e.target.value)}
-                                className="w-full pl-10 pr-10 py-2.5 rounded-lg border-2 border-border bg-background text-sm font-mono focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setShowKey(!showKey)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                            >
-                                {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </button>
-                        </div>
-                        <p className="text-[10px] text-muted-foreground">
-                            Your key is stored locally in your browser. Never sent to our servers.
-                        </p>
-                    </div>
-                )}
-
-                {/* Model Selection */}
-                <div className="space-y-2">
-                    <label className="block text-xs font-medium text-foreground">
-                        Default Model
-                    </label>
-                    <select
-                        value={defaultModels[id as keyof DefaultModels]}
-                        onChange={(e) => handleModelChange(id as keyof DefaultModels, e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-lg border-2 border-border bg-background text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none cursor-pointer transition-all"
-                    >
-                        {PROVIDER_MODELS[id as keyof typeof PROVIDER_MODELS].map(m => (
-                            <option key={m} value={m}>{m}</option>
-                        ))}
-                    </select>
-                </div>
-
-                {/* Current value indicator */}
-                <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 border border-border/50">
-                    <div className={`w-2 h-2 rounded-full shrink-0 ${
-                        isOllama 
-                            ? (ollamaUrl.startsWith('http') ? 'bg-emerald-500' : 'bg-amber-500')
-                            : (providerKeys[id]?.length > 10 ? 'bg-emerald-500' : 'bg-amber-500')
-                    }`} />
-                    <span className="text-[10px] text-muted-foreground truncate">
-                        {isOllama 
-                            ? (ollamaUrl ? `URL: ${ollamaUrl}` : 'No URL configured') 
-                            : (providerKeys[id]?.length > 10 
-                                ? `Key: ${providerKeys[id].slice(0, 8)}${'•'.repeat(12)}` 
-                                : 'No API key configured')}
-                    </span>
-                </div>
-            </div>
-        );
     };
 
     return (
@@ -322,16 +336,52 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                                     </p>
                                 </div>
                                 
-                                {/* Provider Selector */}
                                 <div className="grid grid-cols-2 gap-2">
-                                    <ProviderCard id="google" name="Google" desc="Gemini 2.0 Flash & Pro" />
-                                    <ProviderCard id="openai" name="OpenAI" desc="GPT-4o and o1 models" />
-                                    <ProviderCard id="anthropic" name="Anthropic" desc="Claude 3.5 Sonnet" />
-                                    <ProviderCard id="ollama" name="Ollama" desc="Local LLMs on your machine" />
+                                    <ProviderCard 
+                                        id="google" 
+                                        name="Google" 
+                                        desc="Gemini 2.0 Flash & Pro" 
+                                        isActive={selectedProvider === 'google'}
+                                        hasKey={providerKeys.google?.length > 10}
+                                        onSelect={setSelectedProvider}
+                                    />
+                                    <ProviderCard 
+                                        id="openai" 
+                                        name="OpenAI" 
+                                        desc="GPT-4o and o1 models" 
+                                        isActive={selectedProvider === 'openai'}
+                                        hasKey={providerKeys.openai?.length > 10}
+                                        onSelect={setSelectedProvider}
+                                    />
+                                    <ProviderCard 
+                                        id="anthropic" 
+                                        name="Anthropic" 
+                                        desc="Claude 3.5 Sonnet" 
+                                        isActive={selectedProvider === 'anthropic'}
+                                        hasKey={providerKeys.anthropic?.length > 10}
+                                        onSelect={setSelectedProvider}
+                                    />
+                                    <ProviderCard 
+                                        id="ollama" 
+                                        name="Ollama" 
+                                        desc="Local LLMs on your machine" 
+                                        isActive={selectedProvider === 'ollama'}
+                                        hasKey={ollamaUrl.startsWith('http')}
+                                        onSelect={setSelectedProvider}
+                                    />
                                 </div>
 
-                                {/* Active Provider Configuration */}
-                                {renderProviderConfig()}
+                                <ProviderConfig 
+                                    selectedProvider={selectedProvider}
+                                    ollamaUrl={ollamaUrl}
+                                    setOllamaUrl={setOllamaUrl}
+                                    providerKeys={providerKeys}
+                                    handleKeyChange={handleKeyChange}
+                                    showKey={showKey}
+                                    setShowKey={setShowKey}
+                                    defaultModels={defaultModels}
+                                    handleModelChange={handleModelChange}
+                                />
                             </div>
                         )}
 
@@ -367,22 +417,18 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                                         onChange={(e) => setCustomPrompt(e.target.value)}
                                         placeholder="E.g. Always write code in Python. Always respond in Spanish."
                                         rows={5}
-                                        className="w-full rounded-xl border-2 border-border bg-background px-4 py-3 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all resize-none"
+                                        className="w-full rounded-xl border-2 border-border bg-background text-foreground px-4 py-3 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all resize-none"
                                     />
-                                    <p className="text-[10px] text-muted-foreground">Applied to every AI interaction.</p>
                                 </div>
                             </div>
                         )}
 
                         {activeSection === 'general' && (
                             <div className="p-4 space-y-2">
-                                {/* Auto-execute toggle */}
                                 <div className="flex items-center justify-between p-4 bg-card rounded-xl border border-border">
                                     <div>
                                         <h4 className="text-sm font-medium text-foreground">Auto-execute Workflows</h4>
-                                        <p className="text-xs text-muted-foreground mt-0.5">
-                                            Run generated code actions instantly
-                                        </p>
+                                        <p className="text-xs text-muted-foreground mt-0.5">Run generated code actions instantly</p>
                                     </div>
                                     <button
                                         type="button"
@@ -392,20 +438,15 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                                         }`}
                                     >
                                         <span className={`inline-block h-4 w-4 transform rounded-full transition-transform ${
-                                            autoExecute 
-                                                ? 'translate-x-[22px] bg-primary-foreground' 
-                                                : 'translate-x-[2px] bg-muted-foreground'
+                                            autoExecute ? 'translate-x-[22px] bg-primary-foreground' : 'translate-x-[2px] bg-muted-foreground'
                                         }`} />
                                     </button>
                                 </div>
 
-                                {/* Push Notifications toggle */}
                                 <div className="flex items-center justify-between p-4 bg-card rounded-xl border border-border">
                                     <div>
                                         <h4 className="text-sm font-medium text-foreground">Push Notifications</h4>
-                                        <p className="text-xs text-muted-foreground mt-0.5">
-                                            Alert me when tasks complete in background
-                                        </p>
+                                        <p className="text-xs text-muted-foreground mt-0.5">Alert me when tasks complete</p>
                                     </div>
                                     <button
                                         type="button"
@@ -415,16 +456,13 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                                         }`}
                                     >
                                         <span className={`inline-block h-4 w-4 transform rounded-full transition-transform ${
-                                            notifications 
-                                                ? 'translate-x-[22px] bg-primary-foreground' 
-                                                : 'translate-x-[2px] bg-muted-foreground'
+                                            notifications ? 'translate-x-[22px] bg-primary-foreground' : 'translate-x-[2px] bg-muted-foreground'
                                         }`} />
                                     </button>
                                 </div>
                             </div>
                         )}
 
-                        {/* Save Button - always visible except on integrations */}
                         {activeSection !== 'integrations' && (
                             <div className="p-4 mt-auto sticky bottom-0 bg-background border-t border-border">
                                 <button

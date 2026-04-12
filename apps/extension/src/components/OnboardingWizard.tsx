@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronRight, CheckCircle, Rocket, Target, Zap, Settings } from 'lucide-react';
+import { ChevronRight, CheckCircle, Rocket, Target, Zap, Settings, CheckCircle2 } from 'lucide-react';
 import iconLight from '../assets/icon-light.png';
 import iconDark from '../assets/icon-dark.png';
 
@@ -64,38 +64,39 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
     };
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className="bg-background rounded-xl shadow-2xl w-full max-w-xs mx-3 overflow-hidden border border-border">
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-md flex items-center justify-center z-50 animate-in fade-in duration-300">
+            <div className="bg-card rounded-2xl shadow-2xl w-full max-w-xs mx-3 overflow-hidden border border-border animate-in zoom-in-95 duration-200">
                 {/* Progress Bar */}
                 <div className="h-1 bg-muted">
                     <div
-                        className="h-full bg-primary transition-all duration-300 ease-out"
+                        className="h-full bg-primary transition-all duration-500 ease-out"
                         style={{ width: `${(step / 5) * 100}%` }}
                     />
                 </div>
 
-                <div className="p-5">
+                <div className="p-6">
                     {/* Step 1: Welcome */}
                     {step === 1 && (
                         <div className="text-center">
-                            <div className="inline-flex items-center justify-center mb-4">
-                                <img src={iconDark} alt="Extenda" className="h-14 w-14 dark:hidden" />
-                                <img src={iconLight} alt="Extenda" className="h-14 w-14 hidden dark:block" />
+                            <div className="inline-flex items-center justify-center mb-6">
+                                {/* Corrected Logo Logic */}
+                                <img src={iconDark} alt="Extenda" className="h-16 w-16 dark:hidden drop-shadow-sm" />
+                                <img src={iconLight} alt="Extenda" className="h-16 w-16 hidden dark:block drop-shadow-sm" />
                             </div>
-                             <h2 className="text-lg font-bold text-foreground mb-1">Welcome to Extenda!</h2>
-                            <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
+                             <h2 className="text-xl font-bold text-foreground mb-1 tracking-tight">Welcome to Extenda!</h2>
+                            <p className="text-xs text-muted-foreground mb-6 leading-relaxed">
                                 Your AI assistant that automates workflows across all your tools.
                             </p>
                             <div className="grid grid-cols-3 gap-2">
                                 {[
-                                    { icon: <Zap className="h-4 w-4 text-primary mx-auto mb-1" />, title: 'Smart AI', desc: 'Auto workflows' },
-                                    { icon: <Settings className="h-4 w-4 text-primary mx-auto mb-1" />, title: '200+ Actions', desc: '14 integrations' },
-                                    { icon: <Target className="h-4 w-4 text-primary mx-auto mb-1" />, title: 'Goal-Driven', desc: 'Adapts to you' },
+                                    { icon: <Zap className="h-4 w-4 text-primary mx-auto mb-1" />, title: 'Smart AI', desc: 'Auto work' },
+                                    { icon: <Settings className="h-4 w-4 text-primary mx-auto mb-1" />, title: '14 Apps', desc: '200+ tools' },
+                                    { icon: <Target className="h-4 w-4 text-primary mx-auto mb-1" />, title: 'Personal', desc: 'Custom goals' },
                                 ].map((item) => (
-                                    <div key={item.title} className="p-2.5 bg-muted/60 rounded-lg text-center">
+                                    <div key={item.title} className="p-2.5 bg-muted/40 rounded-xl text-center border border-border/50 transition-all hover:bg-muted/60">
                                         {item.icon}
-                                        <p className="text-xs font-semibold text-foreground">{item.title}</p>
-                                        <p className="text-[10px] text-muted-foreground mt-0.5">{item.desc}</p>
+                                        <p className="text-[10px] font-bold text-foreground truncate">{item.title}</p>
+                                        <p className="text-[9px] text-muted-foreground mt-0.5 leading-tight">{item.desc}</p>
                                     </div>
                                 ))}
                             </div>
@@ -105,16 +106,16 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                     {/* Step 2: Business Type */}
                     {step === 2 && (
                         <div>
-                            <h2 className="text-base font-bold text-foreground mb-0.5">What describes you best?</h2>
-                            <p className="text-xs text-muted-foreground mb-3">Helps us personalize your experience.</p>
-                            <div className="grid grid-cols-2 gap-1.5">
+                            <h2 className="text-lg font-bold text-foreground mb-1">Who are you?</h2>
+                            <p className="text-xs text-muted-foreground mb-4 leading-relaxed">Choose the profile that fits best.</p>
+                            <div className="grid grid-cols-2 gap-2">
                                 {BUSINESS_TYPES.map((type) => (
                                     <button
                                         key={type}
                                         onClick={() => setBusinessType(type)}
-                                        className={`py-2 px-3 rounded-lg border text-xs font-medium transition-all text-left ${businessType === type
-                                            ? 'border-primary bg-primary/10 text-primary'
-                                            : 'border-border text-muted-foreground hover:border-border/80 hover:bg-muted/50'
+                                        className={`py-3 px-3 rounded-xl border-2 text-xs font-bold transition-all text-center ${businessType === type
+                                            ? 'border-primary bg-primary/10 text-primary shadow-md shadow-primary/10'
+                                            : 'border-border text-muted-foreground hover:border-primary/30 hover:bg-muted/50'
                                         }`}
                                     >
                                         {type}
@@ -127,22 +128,22 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                     {/* Step 3: Goals */}
                     {step === 3 && (
                         <div>
-                            <h2 className="text-base font-bold text-foreground mb-0.5">Primary goals?</h2>
-                            <p className="text-xs text-muted-foreground mb-3">Select all that apply.</p>
-                            <div className="grid grid-cols-2 gap-1.5">
+                            <h2 className="text-lg font-bold text-foreground mb-1">Your Focus?</h2>
+                            <p className="text-xs text-muted-foreground mb-4 leading-relaxed">Select your primary tasks.</p>
+                            <div className="grid grid-cols-2 gap-2">
                                 {GOALS.map((goal) => (
                                     <button
                                         key={goal.id}
                                         onClick={() => handleGoalToggle(goal.id)}
-                                        className={`py-2 px-3 rounded-lg border text-xs font-medium flex items-center gap-1.5 transition-all ${selectedGoals.includes(goal.id)
-                                            ? 'border-primary bg-primary/10 text-primary'
-                                            : 'border-border text-muted-foreground hover:border-border/80 hover:bg-muted/50'
+                                        className={`py-3 px-3 rounded-xl border-2 text-xs font-bold flex items-center gap-2 transition-all ${selectedGoals.includes(goal.id)
+                                            ? 'border-primary bg-primary/10 text-primary shadow-md shadow-primary/10'
+                                            : 'border-border text-muted-foreground hover:border-primary/30 hover:bg-muted/50'
                                         }`}
                                     >
-                                        <span>{goal.icon}</span>
-                                        <span>{goal.label}</span>
+                                        <span className="text-base">{goal.icon}</span>
+                                        <span className="truncate">{goal.label}</span>
                                         {selectedGoals.includes(goal.id) && (
-                                            <CheckCircle className="h-3 w-3 text-primary ml-auto flex-shrink-0" />
+                                            <CheckCircle2 className="h-3 w-3 text-primary ml-auto shrink-0" />
                                         )}
                                     </button>
                                 ))}
@@ -153,36 +154,36 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                     {/* Step 4: Connect */}
                     {step === 4 && (
                         <div>
-                            <h2 className="text-base font-bold text-foreground mb-0.5">Connect an integration</h2>
-                            <p className="text-xs text-muted-foreground mb-3">We recommend starting with Google.</p>
-                            <div className="bg-muted/50 rounded-lg p-3 border border-border">
-                                <div className="flex items-center gap-3">
-                                    <span className="text-2xl">📧</span>
+                            <h2 className="text-lg font-bold text-foreground mb-1">Connect Tools</h2>
+                            <p className="text-xs text-muted-foreground mb-4 leading-relaxed">Start with an integration.</p>
+                            <div className="bg-muted/30 rounded-xl p-4 border border-border">
+                                <div className="flex items-center gap-4">
+                                    <span className="text-3xl shrink-0">📧</span>
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-xs font-semibold text-foreground truncate">Google Workspace</p>
-                                        <p className="text-[10px] text-muted-foreground">Gmail, Calendar, Drive</p>
+                                        <p className="text-sm font-bold text-foreground truncate">Google Workspace</p>
+                                        <p className="text-[10px] text-muted-foreground truncate">Gmail, Calendar, Drive</p>
                                     </div>
                                     {connected ? (
-                                        <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+                                        <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
                                     ) : (
                                         <button
                                             onClick={() => setConnected(true)}
-                                            className="px-3 py-1 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:opacity-90 flex-shrink-0"
+                                            className="px-4 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-bold hover:opacity-90 active:scale-95 transition-all shrink-0 shadow-lg shadow-primary/20"
                                         >
                                             Connect
                                         </button>
                                     )}
                                 </div>
                                 {connected && (
-                                    <div className="mt-2 p-2 bg-green-500/10 border border-green-500/20 rounded-lg">
-                                        <p className="text-[10px] text-green-600 flex items-center gap-1">
-                                            <CheckCircle className="h-3 w-3" /> Connected to Google!
+                                    <div className="mt-3 p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg animate-in fade-in slide-in-from-top-1">
+                                        <p className="text-[10px] text-emerald-600 font-bold flex items-center justify-center gap-1.5">
+                                            <CheckCircle2 className="h-3 w-3" /> Successfully Connected!
                                         </p>
                                     </div>
                                 )}
                             </div>
-                            <p className="text-[10px] text-muted-foreground text-center mt-2">
-                                More integrations available in Settings
+                            <p className="text-[10px] text-muted-foreground text-center mt-4">
+                                More available in Settings
                             </p>
                         </div>
                     )}
@@ -190,16 +191,20 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                     {/* Step 5: Done */}
                     {step === 5 && (
                         <div className="text-center">
-                            <div className="inline-flex items-center justify-center mb-4">
-                                <img src={iconDark} alt="Extenda" className="h-12 w-12 dark:hidden" />
-                                <img src={iconLight} alt="Extenda" className="h-12 w-12 hidden dark:block" />
+                            <div className="inline-flex items-center justify-center mb-6">
+                                <img src={iconDark} alt="Extenda" className="h-12 w-12 dark:hidden drop-shadow-sm" />
+                                <img src={iconLight} alt="Extenda" className="h-12 w-12 hidden dark:block drop-shadow-sm" />
                             </div>
-                            <h2 className="text-base font-bold text-foreground mb-1">You're all set!</h2>
-                            <p className="text-xs text-muted-foreground mb-3">Try your first command:</p>
-                            <div className="bg-muted/50 rounded-lg p-3 border border-border text-left space-y-1.5">
-                                {['"Summarize my last 5 emails"', '"Create a meeting for tomorrow at 2pm"', '"What\'s on this page?"'].map((cmd) => (
-                                    <p key={cmd} className="text-xs text-muted-foreground flex items-center gap-1.5">
-                                        <span className="text-primary">›</span> {cmd}
+                            <h2 className="text-lg font-bold text-foreground mb-1">Ready to go!</h2>
+                            <p className="text-xs text-muted-foreground mb-4 leading-relaxed">Try your first command:</p>
+                            <div className="bg-muted/40 rounded-xl p-4 border border-border text-left space-y-2.5">
+                                {[
+                                    '"Summarize my last 5 emails"',
+                                    '"Check my calendar for tomorrow"',
+                                    '"What is on this page?"'
+                                ].map((cmd) => (
+                                    <p key={cmd} className="text-[10px] font-medium text-foreground/80 flex items-start gap-2 leading-tight">
+                                        <Zap className="h-3 w-3 text-primary shrink-0 mt-0.5" /> {cmd}
                                     </p>
                                 ))}
                             </div>
@@ -207,15 +212,15 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                     )}
 
                     {/* Navigation */}
-                    <div className="flex justify-between items-center mt-4">
-                        <span className="text-[10px] text-gray-400 font-medium">Step {step} of 5</span>
+                    <div className="flex justify-between items-center mt-6">
+                        <span className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">Step {step} / 5</span>
                         <button
                             onClick={handleNext}
                             disabled={step !== 1 && !canProceed()}
-                            className="flex items-center gap-1 px-4 py-1.5 bg-indigo-500 text-white rounded-lg text-xs font-semibold hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                            className="flex items-center gap-1.5 px-6 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-black shadow-lg shadow-primary/20 hover:opacity-90 disabled:opacity-40 disabled:scale-100 transition-all active:scale-95 uppercase tracking-tighter"
                         >
                             {step === 5 ? 'Get Started' : 'Next'}
-                            <ChevronRight className="h-3 w-3" />
+                            <ChevronRight className="h-3.5 w-3.5" />
                         </button>
                     </div>
                 </div>

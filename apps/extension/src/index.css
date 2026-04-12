@@ -4,7 +4,8 @@
 
 @layer base {
     :root {
-        --background: 210 20% 96%;
+        /* Crisp High-Contrast Light Mode (Platinum Zinc) */
+        --background: 210 20% 98%;
         --foreground: 222 47% 11%;
 
         --card: 0 0% 100%;
@@ -16,91 +17,90 @@
         --primary: 221 83% 53%;
         --primary-foreground: 210 40% 98%;
 
-        --secondary: 214 20% 92%;
+        --secondary: 214 20% 95%;
         --secondary-foreground: 222 47% 11%;
 
-        --muted: 214 20% 92%;
-        --muted-foreground: 215 16% 47%;
+        --muted: 214 20% 95%;
+        --muted-foreground: 215 16% 40%;
 
-        --accent: 214 20% 92%;
+        --accent: 214 20% 95%;
         --accent-foreground: 222 47% 11%;
 
         --destructive: 0 84% 60%;
         --destructive-foreground: 210 40% 98%;
 
-        --border: 214 20% 84%;
-        --input: 214 20% 84%;
+        --border: 214 20% 88%;
+        --input: 214 20% 88%;
         --ring: 221 83% 53%;
 
         --radius: 0.75rem;
     }
 
     .dark {
-        --background: 224 25% 10%;
-        --foreground: 210 40% 96%;
+        /* Premium Zinc Midnight Mode */
+        --background: 240 10% 4%;
+        --foreground: 210 40% 98%;
 
-        --card: 224 22% 14%;
-        --card-foreground: 210 40% 96%;
+        --card: 240 10% 8%;
+        --card-foreground: 210 40% 98%;
 
-        --popover: 224 22% 14%;
-        --popover-foreground: 210 40% 96%;
+        --popover: 240 10% 8%;
+        --popover-foreground: 210 40% 98%;
 
         --primary: 217 91% 60%;
         --primary-foreground: 222 47% 11%;
 
-        --secondary: 224 20% 20%;
-        --secondary-foreground: 210 40% 96%;
+        --secondary: 240 10% 12%;
+        --secondary-foreground: 210 40% 98%;
 
-        --muted: 224 20% 20%;
-        --muted-foreground: 215 20% 65%;
+        --muted: 240 10% 12%;
+        --muted-foreground: 240 5% 65%;
 
-        --accent: 224 20% 20%;
-        --accent-foreground: 210 40% 96%;
+        --accent: 240 10% 12%;
+        --accent-foreground: 210 40% 98%;
 
         --destructive: 0 63% 31%;
-        --destructive-foreground: 210 40% 96%;
+        --destructive-foreground: 210 40% 98%;
 
-        --border: 224 16% 24%;
-        --input: 224 16% 26%;
+        --border: 240 10% 16%;
+        --input: 240 10% 16%;
         --ring: 217 91% 60%;
     }
 }
 
 @layer base {
     * {
-        border-color: hsl(var(--border));
+        @apply border-border;
     }
 
     body {
-        background-color: hsl(var(--background));
-        color: hsl(var(--foreground));
+        @apply bg-background text-foreground;
+        font-feature-settings: "rlig" 1, "calt" 1;
     }
 
-    /* Ensure all form inputs are always readable */
+    /* FORCED VISIBILITY: Ensure inputs never hide text */
     input, textarea, select {
+        background-color: hsl(var(--background)) !important;
         color: hsl(var(--foreground)) !important;
-        caret-color: hsl(var(--primary));
+        caret-color: hsl(var(--primary)) !important;
+        transition: border-color 0.2s ease, ring 0.2s ease;
     }
 
     input::placeholder, textarea::placeholder {
         color: hsl(var(--muted-foreground)) !important;
-        opacity: 0.7;
+        opacity: 0.6 !important;
     }
 
-    option {
-        background-color: hsl(var(--card));
-        color: hsl(var(--foreground));
+    /* Fix for invisible backgrounds on some browsers */
+    button {
+        @apply transition-all active:scale-95;
     }
 }
 
 /* Voice Mode Animations */
 @keyframes waveform {
-    0%, 100% {
-        height: 10px;
-    }
-    50% {
-        height: 30px;
-    }
+    0%, 100% { height: 10px; }
+    50% { height: 30px; }
 }
 
 .animate-waveform {
@@ -109,14 +109,8 @@
 
 /* Speaking pulse */
 @keyframes speaking-pulse {
-    0%, 100% {
-        transform: scale(1);
-        opacity: 1;
-    }
-    50% {
-        transform: scale(1.1);
-        opacity: 0.8;
-    }
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.1); opacity: 0.8; }
 }
 
 .animate-speaking {
@@ -128,6 +122,6 @@
     display: none;
 }
 .no-scrollbar {
-    -ms-overflow-style: none; /* IE and Edge */
-    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none;
+    scrollbar-width: none;
 }

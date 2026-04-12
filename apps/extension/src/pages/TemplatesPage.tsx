@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Rocket, Clock, Mail, Calendar, Search, Zap } from 'lucide-react';
+import { ArrowLeft, Rocket, Mail, Calendar, Search, Zap, Loader2, CheckCircle2 } from 'lucide-react';
 
 interface Template {
     id: number;
@@ -31,6 +31,7 @@ export default function TemplatesPage({ onBack }: TemplatesPageProps) {
     const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
     const [parameters, setParameters] = useState<Record<string, any>>({});
     const [loading, setLoading] = useState(true);
+    const [executing, setExecuting] = useState(false);
 
     useEffect(() => {
         fetchTemplates();
@@ -51,7 +52,6 @@ export default function TemplatesPage({ onBack }: TemplatesPageProps) {
 
     const handleSelectTemplate = (template: Template) => {
         setSelectedTemplate(template);
-        // Initialize parameters with defaults
         const initialParams: Record<string, any> = {};
         template.parameters.forEach(param => {
             initialParams[param.name] = param.default || '';
@@ -61,6 +61,7 @@ export default function TemplatesPage({ onBack }: TemplatesPageProps) {
 
     const handleExecute = async () => {
         if (!selectedTemplate) return;
+        setExecuting(true);
 
         try {
             const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -73,110 +74,116 @@ export default function TemplatesPage({ onBack }: TemplatesPageProps) {
                 })
             });
 
-            const data = await response.json();
-            console.log('Workflow created:', data);
-            // TODO: Trigger workflow execution
-            alert('Workflow created from template!');
-            setSelectedTemplate(null);
+            if (response.ok) {
+                const data = await response.json();
+                console.log('Workflow created:', data);
+                setSelectedTemplate(null);
+            }
         } catch (error) {
             console.error('Failed to execute template:', error);
-            alert('Failed to create workflow');
+        } finally {
+            setExecuting(false);
         }
     };
 
     return (
-        <div className="flex flex-col h-screen bg-gray-50">
+        <div className="flex flex-col h-screen bg-background text-foreground">
             {/* Header */}
-            <div className="border-b border-gray-200 bg-white px-6 py-4 shadow-sm">
+            <div className="border-b border-border bg-card px-6 py-4 shadow-sm sticky top-0 z-10">
                 <div className="flex items-center gap-3">
                     {onBack && (
                         <button
                             onClick={onBack}
-                            className="p-1 -ml-1 rounded-full hover:bg-gray-100 transition-colors"
+                            className="p-1.5 -ml-1.5 rounded-full hover:bg-muted text-foreground transition-all active:scale-95"
                             title="Back"
                         >
-                            <ArrowLeft className="h-6 w-6 text-gray-600" />
+                            <ArrowLeft className="h-5 w-5" />
                         </button>
                     )}
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-900">Workflow Templates</h1>
-                        <p className="text-sm text-gray-600 mt-1">
-                            Pre-built workflows for common tasks
+                        <h1 className="text-xl font-bold tracking-tight">Workflow Templates</h1>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                            Standardized workflows for common operations
                         </p>
                     </div>
                 </div>
             </div>
 
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-6">
-                <div className="max-w-6xl mx-auto">
+            {/* Content Area */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-background">
+                <div className="max-w-4xl mx-auto">
                     {loading ? (
-                        <div className="text-center py-12">
-                            <p className="text-gray-600">Loading templates...</p>
+                        <div className="flex flex-col items-center justify-center py-20 gap-3">
+                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                            <p className="text-sm font-medium text-muted-foreground animate-pulse">Loading templates...</p>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {templates.map((template) => {
-                                const IconComponent = CATEGORY_ICONS[template.category] || Rocket;
-                                return (
-                                    <div
-                                        key={template.id}
-                                        onClick={() => handleSelectTemplate(template)}
-                                        className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-lg transition-all cursor-pointer"
-                                    >
-                                        <div className="flex items-start gap-3 mb-3">
-                                            <div className="text-3xl">{template.icon}</div>
-                                            <div className="flex-1">
-                                                <h3 className="font-semibold text-gray-900 mb-1">
-                                                    {template.name}
-                                                </h3>
-                                                <p className="text-sm text-gray-600">
-                                                    {template.description}
-                                                </p>
-                                            </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {templates.map((template) => (
+                                <div
+                                    key={template.id}
+                                    onClick={() => handleSelectTemplate(template)}
+                                    className="group relative bg-card rounded-2xl border-2 border-border p-5 hover:border-primary/50 hover:shadow-xl transition-all cursor-pointer overflow-hidden animate-in fade-in slide-in-from-bottom-2"
+                                >
+                                    <div className="flex items-start gap-4">
+                                        <div className="text-4xl p-1 shrink-0 group-hover:scale-110 transition-transform duration-300">
+                                            {template.icon}
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium capitalize">
-                                                {template.category}
-                                            </span>
-                                            <span className="text-xs text-gray-500">
-                                                {template.parameters.length} params
-                                            </span>
+                                        <div className="flex-1 min-w-0">
+                                            <h3 className="font-bold text-base truncate mb-1">
+                                                {template.name}
+                                            </h3>
+                                            <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                                                {template.description}
+                                            </p>
                                         </div>
                                     </div>
-                                );
-                            })}
+                                    <div className="mt-4 flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <span className="px-2.5 py-1 bg-primary/10 text-primary border border-primary/20 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                                                {template.category}
+                                            </span>
+                                            <span className="text-[10px] font-medium text-muted-foreground">
+                                                {template.parameters.length} parameters
+                                            </span>
+                                        </div>
+                                        <div className="p-1.5 rounded-lg bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <Zap className="h-3 w-3 text-primary" />
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     )}
                 </div>
             </div>
 
-            {/* Template Parameters Modal */}
+            {/* Config Modal Overlay */}
             {selectedTemplate && (
-                <div className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4">
-                        <div className="border-b border-gray-200 px-6 py-4">
-                            <div className="flex items-center gap-3">
-                                <span className="text-3xl">{selectedTemplate.icon}</span>
-                                <div>
-                                    <h2 className="text-xl font-semibold text-gray-900">
+                <div className="fixed inset-0 bg-background/80 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
+                    <div className="bg-card w-full max-w-lg rounded-2xl shadow-2xl border border-border overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="border-b border-border px-6 py-5 bg-muted/30">
+                            <div className="flex items-center gap-4">
+                                <span className="text-4xl shrink-0">{selectedTemplate.icon}</span>
+                                <div className="min-w-0">
+                                    <h2 className="text-lg font-bold truncate">
                                         {selectedTemplate.name}
                                     </h2>
-                                    <p className="text-sm text-gray-600">
+                                    <p className="text-xs text-muted-foreground line-clamp-1">
                                         {selectedTemplate.description}
                                     </p>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="p-6">
-                            <h3 className="text-sm font-semibold text-gray-900 mb-4">
-                                Configure Parameters
+                        <div className="p-6 max-h-[60vh] overflow-y-auto space-y-5 no-scrollbar">
+                            <h3 className="text-xs font-bold text-primary uppercase tracking-widest px-1">
+                                Configuration
                             </h3>
                             <div className="space-y-4">
                                 {selectedTemplate.parameters.map((param) => (
-                                    <div key={param.name}>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    <div key={param.name} className="space-y-1.5">
+                                        <label className="block text-xs font-bold text-foreground ml-1">
                                             {param.description}
                                         </label>
                                         <input
@@ -186,27 +193,35 @@ export default function TemplatesPage({ onBack }: TemplatesPageProps) {
                                                 setParameters({
                                                     ...parameters,
                                                     [param.name]: param.type === 'number'
-                                                        ? parseInt(e.target.value)
+                                                        ? parseInt(e.target.value) || 0
                                                         : e.target.value
                                                 })
                                             }
-                                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                            className="w-full rounded-xl border-2 border-border bg-background px-4 py-2.5 text-sm focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-all placeholder:text-muted-foreground/50"
+                                            placeholder={`Enter ${param.name.toLowerCase()}...`}
                                         />
                                     </div>
                                 ))}
                             </div>
                         </div>
 
-                        <div className="border-t border-gray-200 px-6 py-4 flex gap-3">
+                        <div className="border-t border-border p-4 flex gap-3 bg-muted/10">
                             <button
                                 onClick={handleExecute}
-                                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
+                                disabled={executing}
+                                className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-xl font-bold text-sm hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-primary/20 active:scale-95"
                             >
-                                Create Workflow
+                                {executing ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                    <CheckCircle2 className="h-4 w-4" />
+                                )}
+                                {executing ? 'Deploying...' : 'Create Workflow'}
                             </button>
                             <button
                                 onClick={() => setSelectedTemplate(null)}
-                                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200"
+                                disabled={executing}
+                                className="px-6 py-3 bg-muted text-foreground border border-border rounded-xl font-bold text-sm hover:bg-muted/80 transition-all active:scale-95"
                             >
                                 Cancel
                             </button>
