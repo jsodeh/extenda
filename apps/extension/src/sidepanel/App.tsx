@@ -201,10 +201,11 @@ function AppContent() {
         };
         checkBackendChange();
 
-        // Listen for storage changes to react to Settings changes
+        // Listen for storage changes - Hard reload on backend switch for 100% reliability
         const handleStorageChange = (changes: any) => {
-            if (changes.extenda_backend_url) {
-                setBackendUrl(changes.extenda_backend_url.newValue);
+            if (changes.extenda_backend_url && changes.extenda_backend_url.oldValue !== changes.extenda_backend_url.newValue) {
+                console.log('[Sync] Backend URL changed, refreshing app...');
+                window.location.reload();
             }
         };
         chrome.storage.onChanged.addListener(handleStorageChange);
