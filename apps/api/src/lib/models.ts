@@ -83,11 +83,6 @@ export const generateText = async (prompt: string, config?: ModelConfig): Promis
                 console.log(`[AI Router] Rewriting Ollama URL for Docker compatibility: ${baseUrl}`);
             }
             
-            // Check if we are in cloud environment trying to reach localhost
-            if (baseUrl.includes('localhost') && process.env.RENDER === 'true') {
-                throw new Error('Ollama Connectivity: A cloud-hosted backend cannot reach your local computer. Please run the Extenda backend locally via Docker or use a tunnel (e.g., ngrok) to expose your Ollama instance.');
-            }
-
             const result: any = await Promise.race([
                 fetch(`${baseUrl}/api/chat`, {
                     method: 'POST',
@@ -99,13 +94,22 @@ export const generateText = async (prompt: string, config?: ModelConfig): Promis
                     })
                 }).then(async res => {
                     if (!res.ok) {
-                        const errBody = await res.text();
-                        throw new Error(`Ollama Error (${res.status}): ${errBody}`);
+                        const error = await res.text();
+                        throw new Error(`Ollama error: ${error}`);
                     }
                     return res.json();
                 }),
                 timeoutPromise
-            ]);
+            ]).catch(err => {
+                // Diagnose connectivity failure
+                if (baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')) {
+                    if (process.env.RENDER) {
+                        throw new Error('Ollama Connectivity: A cloud-hosted backend cannot reach your local host. Please use the Local (3000) backend in Extenda settings or use a tunnel (e.g., ngrok).');
+                    }
+                    throw new Error(`Local Ollama Unreachable at ${baseUrl}. Ensure Ollama is running and OLLAMA_HOST=0.0.0.0 is set.`);
+                }
+                throw err;
+            });
             
             resultText = result.message?.content || '';
 
