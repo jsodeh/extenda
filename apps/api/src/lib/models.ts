@@ -77,13 +77,14 @@ export const generateText = async (prompt: string, config?: ModelConfig): Promis
             let baseUrl = config.baseURL || 'http://localhost:11434';
             
             // If running inside Docker and URL is localhost, rewrite to host.docker.internal
-            if (baseUrl.includes('localhost') && process.env.NODE_ENV !== 'development' && !process.env.RENDER) {
+            // We do this by default in Docker since localhost inside a container is not the host machine
+            if (baseUrl.includes('localhost') && !process.env.RENDER) {
                 baseUrl = baseUrl.replace('localhost', 'host.docker.internal');
                 console.log(`[AI Router] Rewriting Ollama URL for Docker compatibility: ${baseUrl}`);
             }
             
             // Check if we are in cloud environment trying to reach localhost
-            if (baseUrl.includes('localhost') && process.env.RENDER) {
+            if (baseUrl.includes('localhost') && process.env.RENDER === 'true') {
                 throw new Error('Ollama Connectivity: A cloud-hosted backend cannot reach your local computer. Please run the Extenda backend locally via Docker or use a tunnel (e.g., ngrok) to expose your Ollama instance.');
             }
 
