@@ -27,7 +27,7 @@ import sync from './routes/sync.js';
 const app = new Hono<AuthEnv>();
 
 app.use('*', logger());
-app.use('*', cors());
+// Detailed CORS handled in index.ts for better control
 
 app.get('/', (c) => c.text('Extenda API'));
 app.get('/health', (c) => c.json({ status: 'ok' }));

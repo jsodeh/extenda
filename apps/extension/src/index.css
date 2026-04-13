@@ -4,7 +4,40 @@
 
 @layer base {
     :root {
-        /* Crisp High-Contrast Light Mode (Platinum Zinc) */
+        /* Premium Zinc Midnight Mode (Default) */
+        --background: 240 10% 4%;
+        --foreground: 210 40% 98%;
+
+        --card: 240 10% 7%;
+        --card-foreground: 210 40% 98%;
+
+        --popover: 240 10% 7%;
+        --popover-foreground: 210 40% 98%;
+
+        --primary: 217 91% 60%;
+        --primary-foreground: 222 47% 11%;
+
+        --secondary: 240 10% 10%;
+        --secondary-foreground: 210 40% 98%;
+
+        --muted: 240 10% 10%;
+        --muted-foreground: 240 5% 65%;
+
+        --accent: 240 10% 12%;
+        --accent-foreground: 210 40% 98%;
+
+        --destructive: 0 63% 31%;
+        --destructive-foreground: 210 40% 98%;
+
+        --border: 240 10% 14%;
+        --input: 240 10% 14%;
+        --ring: 217 91% 60%;
+
+        --radius: 1rem;
+    }
+
+    /* Keep Light Mode as an option if user switches */
+    .light {
         --background: 210 20% 98%;
         --foreground: 222 47% 11%;
 
@@ -32,39 +65,6 @@
         --border: 214 20% 88%;
         --input: 214 20% 88%;
         --ring: 221 83% 53%;
-
-        --radius: 0.75rem;
-    }
-
-    .dark {
-        /* Premium Zinc Midnight Mode */
-        --background: 240 10% 4%;
-        --foreground: 210 40% 98%;
-
-        --card: 240 10% 8%;
-        --card-foreground: 210 40% 98%;
-
-        --popover: 240 10% 8%;
-        --popover-foreground: 210 40% 98%;
-
-        --primary: 217 91% 60%;
-        --primary-foreground: 222 47% 11%;
-
-        --secondary: 240 10% 12%;
-        --secondary-foreground: 210 40% 98%;
-
-        --muted: 240 10% 12%;
-        --muted-foreground: 240 5% 65%;
-
-        --accent: 240 10% 12%;
-        --accent-foreground: 210 40% 98%;
-
-        --destructive: 0 63% 31%;
-        --destructive-foreground: 210 40% 98%;
-
-        --border: 240 10% 16%;
-        --input: 240 10% 16%;
-        --ring: 217 91% 60%;
     }
 }
 
