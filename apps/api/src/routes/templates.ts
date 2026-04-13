@@ -1,28 +1,36 @@
 import { Hono } from 'hono';
-import { Pool } from 'pg';
+import { db } from '../db/index.js';
+import { workflows } from '../db/schema.js';
+import { eq, or, and } from 'drizzle-orm';
+import { authMiddleware, AuthEnv } from '../lib/auth.js';
 
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL || 'postgres://postgres:password@localhost:5432/extenda',
-});
+const templates = new Hono<AuthEnv>();
 
-const query = (text: string, params?: any[]) => pool.query(text, params);
-
-const templates = new Hono();
+// Apply auth middleware to all template routes
+templates.use('*', authMiddleware);
 
 /**
  * GET /api/templates
  * Get all workflow templates
  */
 templates.get('/', async (c) => {
+    const user = c.get('user');
+    
     try {
-        const result = await query(`
-            SELECT id, name, description, category, icon, template, parameters, is_public
-            FROM workflow_templates
-            WHERE is_public = true OR created_by = $1
-            ORDER BY category, name
-        `, ['2c7649f8-039e-4d2b-91ca-cb57e888811c']); // TODO: Get userId from auth
+        const result = await db.select()
+            .from(workflows)
+            .where(
+                and(
+                    eq(workflows.isTemplate, true),
+                    or(
+                        eq(workflows.isPublic, true),
+                        eq(workflows.userId, user.id as any)
+                    )
+                )
+            )
+            .orderBy(workflows.category, workflows.name);
 
-        return c.json({ templates: result.rows });
+        return c.json({ templates: result });
     } catch (error) {
         console.error('Error fetching templates:', error);
         return c.json({ error: 'Failed to fetch templates' }, 500);
@@ -35,17 +43,27 @@ templates.get('/', async (c) => {
  */
 templates.get('/:id', async (c) => {
     const id = c.req.param('id');
+    const user = c.get('user');
 
     try {
-        const result = await query(`
-            SELECT * FROM workflow_templates WHERE id = $1
-        `, [id]);
+        const [template] = await db.select()
+            .from(workflows)
+            .where(
+                and(
+                    eq(workflows.id, id as any),
+                    eq(workflows.isTemplate, true),
+                    or(
+                        eq(workflows.isPublic, true),
+                        eq(workflows.userId, user.id as any)
+                    )
+                )
+            );
 
-        if (result.rows.length === 0) {
+        if (!template) {
             return c.json({ error: 'Template not found' }, 404);
         }
 
-        return c.json({ template: result.rows[0] });
+        return c.json({ template });
     } catch (error) {
         console.error('Error fetching template:', error);
         return c.json({ error: 'Failed to fetch template' }, 500);
@@ -57,27 +75,35 @@ templates.get('/:id', async (c) => {
  * Execute a template with parameters
  */
 templates.post('/execute', async (c) => {
+    const user = c.get('user');
+    
     try {
         const body = await c.req.json();
         const { templateId, parameters } = body;
 
         // Fetch template
-        const templateResult = await query(`
-            SELECT * FROM workflow_templates WHERE id = $1
-        `, [templateId]);
+        const [template] = await db.select()
+            .from(workflows)
+            .where(
+                and(
+                    eq(workflows.id, templateId as any),
+                    eq(workflows.isTemplate, true)
+                )
+            );
 
-        if (templateResult.rows.length === 0) {
+        if (!template) {
             return c.json({ error: 'Template not found' }, 404);
         }
 
-        const template = templateResult.rows[0];
+        // Replace parameters in template definition
+        let workflowJson = JSON.stringify(template.definition);
 
-        // Replace parameters in template
-        let workflowJson = JSON.stringify(template.template);
-
-        for (const [key, value] of Object.entries(parameters)) {
-            const placeholder = `\${${key}}`;
-            workflowJson = workflowJson.replace(new RegExp(`\\$\\{${key}\\}`, 'g'), String(value));
+        if (parameters && typeof parameters === 'object') {
+            for (const [key, value] of Object.entries(parameters)) {
+                const placeholder = `\${${key}}`;
+                // Simple string replacement for basic templates
+                workflowJson = workflowJson.replace(new RegExp(`\\$\\{${key}\\}`, 'g'), String(value));
+            }
         }
 
         const workflow = JSON.parse(workflowJson);

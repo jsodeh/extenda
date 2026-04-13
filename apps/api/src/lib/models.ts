@@ -74,7 +74,19 @@ export const generateText = async (prompt: string, config?: ModelConfig): Promis
             resultText = result.content[0].type === 'text' ? result.content[0].text : '';
 
         } else if (config.provider === 'ollama') {
-            const baseUrl = config.baseURL || 'http://localhost:11434';
+            let baseUrl = config.baseURL || 'http://localhost:11434';
+            
+            // If running inside Docker and URL is localhost, rewrite to host.docker.internal
+            if (baseUrl.includes('localhost') && process.env.NODE_ENV !== 'development' && !process.env.RENDER) {
+                baseUrl = baseUrl.replace('localhost', 'host.docker.internal');
+                console.log(`[AI Router] Rewriting Ollama URL for Docker compatibility: ${baseUrl}`);
+            }
+            
+            // Check if we are in cloud environment trying to reach localhost
+            if (baseUrl.includes('localhost') && process.env.RENDER) {
+                throw new Error('Ollama Connectivity: A cloud-hosted backend cannot reach your local computer. Please run the Extenda backend locally via Docker or use a tunnel (e.g., ngrok) to expose your Ollama instance.');
+            }
+
             const result: any = await Promise.race([
                 fetch(`${baseUrl}/api/chat`, {
                     method: 'POST',
@@ -84,7 +96,13 @@ export const generateText = async (prompt: string, config?: ModelConfig): Promis
                         messages: [{ role: 'user', content: prompt }],
                         stream: false
                     })
-                }).then(res => res.json()),
+                }).then(async res => {
+                    if (!res.ok) {
+                        const errBody = await res.text();
+                        throw new Error(`Ollama Error (${res.status}): ${errBody}`);
+                    }
+                    return res.json();
+                }),
                 timeoutPromise
             ]);
             

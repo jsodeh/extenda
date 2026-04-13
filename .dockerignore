@@ -1,0 +1,12 @@
+node_modules
+dist
+.git
+.next
+apps/extension/dist
+apps/extension/build
+apps/api/dist
+packages/shared/dist
+.env
+.env.local
+.turbo
+*.log

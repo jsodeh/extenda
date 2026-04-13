@@ -23,6 +23,8 @@ import { useAuth } from '../contexts/auth-context';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { TextShimmer } from '../components/ui/TextShimmer';
 import { ChatSuggestions, STARTER_SUGGESTIONS, Suggestion } from '../components/chat/ChatSuggestions';
+import { getApiUrl } from '../lib/api';
+import { Globe, RefreshCw, X } from 'lucide-react';
 
 interface FileAttachment {
     name: string;
@@ -86,6 +88,8 @@ function AppContent() {
     const [pendingPrompt, setPendingPrompt] = useState<string>('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const workflowRef = useRef<{ id: string; steps: WorkflowStep[] } | null>(null);
+    const [showSyncPrompt, setShowSyncPrompt] = useState(false);
+    const [syncing, setSyncing] = useState(false);
 
 
 
@@ -99,10 +103,11 @@ function AppContent() {
         const fetchDynamicSuggestions = async () => {
             if (!accessToken) return;
             try {
-                const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+                const API_URL = await getApiUrl();
                 const response = await fetch(`${API_URL}/api/chat/sessions`, {
                     headers: { 'Authorization': `Bearer ${accessToken}` }
                 });
+// ...
                 
                 if (response.ok) {
                     const sessions = await response.json();
@@ -180,7 +185,76 @@ function AppContent() {
         if (!onboardingComplete) {
             setShowOnboarding(true);
         }
+
+        const checkBackendChange = async () => {
+            const currentUrl = await getApiUrl();
+            const result = await chrome.storage.local.get(['lastBackendUrl']);
+            
+            if (result.lastBackendUrl && result.lastBackendUrl !== currentUrl) {
+                setShowSyncPrompt(true);
+            } else if (!result.lastBackendUrl) {
+                // Initialize if first time
+                await chrome.storage.local.set({ lastBackendUrl: currentUrl });
+            }
+        };
+        checkBackendChange();
     }, []);
+
+    const handleSyncData = async () => {
+        setSyncing(true);
+        try {
+            const API_URL = await getApiUrl();
+            const { lastBackendUrl } = await chrome.storage.local.get(['lastBackendUrl']);
+            
+            if (!lastBackendUrl || lastBackendUrl === API_URL) {
+                console.log('[Sync] No previous backend found or URLs match. Skipping.');
+                setShowSyncPrompt(false);
+                return;
+            }
+
+            console.log(`[Sync] Moving data from ${lastBackendUrl} to ${API_URL}`);
+            
+            // 1. Export from OLD backend
+            const exportResponse = await fetch(`${lastBackendUrl}/api/sync/export`, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+            
+            if (!exportResponse.ok) throw new Error('Failed to export data from old backend');
+            const { bundle } = await exportResponse.json();
+
+            // 2. Import into NEW backend
+            const importResponse = await fetch(`${API_URL}/api/sync/import`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
+                },
+                body: JSON.stringify({ bundle })
+            });
+
+            if (!importResponse.ok) throw new Error('Failed to import data to new backend');
+
+            // 3. Mark as synced and update current
+            await chrome.storage.local.set({ lastBackendUrl: API_URL });
+            setShowSyncPrompt(false);
+            
+            // Reload to show new messages/history
+            window.location.reload(); 
+        } catch (error) {
+            console.error('Sync failed:', error);
+            // Even if it fails, maybe we should offer a way to dismiss? 
+            // For now, let's just alert the user.
+            alert('Sync failed. Please ensure both backends are reachable.');
+        } finally {
+            setSyncing(false);
+        }
+    };
+
+    const dismissSync = async () => {
+        const currentUrl = await getApiUrl();
+        await chrome.storage.local.set({ lastBackendUrl: currentUrl });
+        setShowSyncPrompt(false);
+    };
 
     const scrollToBottom = () => {
         // slight delay to ensure DOM updates are painted
@@ -216,20 +290,21 @@ function AppContent() {
 
     // useEffect for WebSocket connection - only runs when accessToken changes
     useEffect(() => {
-        if (accessToken) {
-            wsClient.connect(accessToken);
-            wsClient.on('connect', () => setStatus('Connected'));
-            wsClient.on('disconnect', () => setStatus('Disconnected'));
-        } else {
-            wsClient.disconnect();
-            setStatus('Disconnected');
-        }
+        const connectWs = async () => {
+            if (accessToken) {
+                const apiUrl = await getApiUrl();
+                wsClient.connect(accessToken, apiUrl);
+                wsClient.on('connect', () => setStatus('Connected'));
+                wsClient.on('disconnect', () => setStatus('Disconnected'));
+            } else {
+                wsClient.disconnect();
+                setStatus('Disconnected');
+            }
+        };
+        connectWs();
 
         return () => {
-            // Don't disconnect on cleanup unless accessToken is gone
-            if (!accessToken) {
-                wsClient.disconnect();
-            }
+            if (!accessToken) wsClient.disconnect();
         };
     }, [accessToken]);
 
@@ -552,7 +627,7 @@ function AppContent() {
             setCurrentPage('chat');
             setMessages([]); // Clear while loading
 
-            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+            const API_URL = await getApiUrl();
             const response = await fetch(`${API_URL}/api/chat/sessions/${sessionId}`, {
                 headers: {
                     'Authorization': `Bearer ${accessToken}`
@@ -634,6 +709,44 @@ function AppContent() {
                 status={status}
                 onReconnect={() => accessToken && wsClient.connect(accessToken)}
             >
+                {/* Auto-Sync PromptOverlay */}
+                {showSyncPrompt && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300">
+                        <div className="w-full max-w-sm bg-card border border-border rounded-2xl shadow-2xl p-6 space-y-4 animate-in zoom-in-95 duration-300">
+                            <div className="flex items-center gap-3">
+                                <div className="p-3 rounded-full bg-primary/10">
+                                    <Globe className="w-6 h-6 text-primary" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-foreground">Backend Changed</h3>
+                                    <p className="text-xs text-muted-foreground">Sync your history to this environment?</p>
+                                </div>
+                            </div>
+                            
+                            <div className="flex flex-col gap-2">
+                                <button
+                                    onClick={handleSyncData}
+                                    disabled={syncing}
+                                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 active:scale-95 transition-all disabled:opacity-50"
+                                >
+                                    {syncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                                    <span>{syncing ? 'Syncing...' : 'Sync History & Workflows'}</span>
+                                </button>
+                                <button
+                                    onClick={dismissSync}
+                                    disabled={syncing}
+                                    className="w-full py-3 rounded-xl bg-muted text-foreground font-medium text-sm hover:bg-muted/80 transition-all disabled:opacity-50"
+                                >
+                                    Maybe Later
+                                </button>
+                            </div>
+                            <p className="text-[10px] text-center text-muted-foreground">
+                                Data is encrypted using your JWT_SECRET for privacy.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 <div className="flex flex-col min-h-full pb-60">
                     <div className="flex-1 flex flex-col">
                         {messages.length === 0 ? (

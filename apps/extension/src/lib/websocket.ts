@@ -5,21 +5,22 @@ class WebSocketClient {
     private currentToken?: string;
     private listeners: Map<string, Function[]> = new Map();
 
-    connect(token?: string) {
-        // If already connected with the same token, don't reconnect
-        if (this.socket && this.socket.connected && this.currentToken === token) {
+    connect(token?: string, apiUrl?: string) {
+        const targetUrl = apiUrl || import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
+        // If already connected with the same token and url, don't reconnect
+        if (this.socket && this.socket.connected && this.currentToken === token && (this.socket as any).io.uri === targetUrl) {
             return;
         }
 
-        // If connected but token changed, disconnect first
-        if (this.socket && this.currentToken !== token) {
+        // If connected but token or url changed, disconnect first
+        if (this.socket && (this.currentToken !== token || (this.socket as any).io.uri !== targetUrl)) {
             this.socket.disconnect();
         }
 
         this.currentToken = token;
 
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-        this.socket = io(apiUrl, {
+        this.socket = io(targetUrl, {
             transports: ['polling', 'websocket'],
             reconnection: true,
             reconnectionAttempts: 5,

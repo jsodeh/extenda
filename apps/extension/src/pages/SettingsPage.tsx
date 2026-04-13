@@ -191,6 +191,7 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
     });
     const [selectedProvider, setSelectedProvider] = useState<keyof KeyStorage>('google');
     const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434');
+    const [backendUrl, setBackendUrl] = useState(import.meta.env.VITE_API_URL || 'http://localhost:3000');
     const [showKey, setShowKey] = useState(false);
     
     // Legacy states
@@ -208,12 +209,14 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                 'extenda_provider_keys', 
                 'extenda_active_provider', 
                 'extenda_default_models',
-                'extenda_ollama_url'
+                'extenda_ollama_url',
+                'extenda_backend_url'
             ], (result) => {
                 if (result.extenda_provider_keys) setProviderKeys(result.extenda_provider_keys);
                 if (result.extenda_active_provider) setSelectedProvider(result.extenda_active_provider);
                 if (result.extenda_default_models) setDefaultModels(result.extenda_default_models);
                 if (result.extenda_ollama_url) setOllamaUrl(result.extenda_ollama_url);
+                if (result.extenda_backend_url) setBackendUrl(result.extenda_backend_url);
             });
         }
 
@@ -242,7 +245,8 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                 extenda_provider_keys: providerKeys,
                 extenda_active_provider: selectedProvider,
                 extenda_default_models: defaultModels,
-                extenda_ollama_url: ollamaUrl
+                extenda_ollama_url: ollamaUrl,
+                extenda_backend_url: backendUrl
             });
         }
 
@@ -424,7 +428,44 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                         )}
 
                         {activeSection === 'general' && (
-                            <div className="p-4 space-y-2">
+                            <div className="p-4 space-y-4">
+                                {/* Backend API URL - Moved to Top */}
+                                <div className="p-4 bg-card rounded-xl border-2 border-primary/30 space-y-3 shadow-md">
+                                    <div className="flex items-center gap-2">
+                                        <div className="p-1.5 rounded-lg bg-primary/10">
+                                            <Save className="h-4 w-4 text-primary" />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-sm font-bold text-foreground">Backend API URL</h4>
+                                            <p className="text-[10px] text-muted-foreground">Current: {backendUrl.includes('render') ? 'Cloud' : 'Local'}</p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="space-y-2">
+                                        <input
+                                            type="text"
+                                            value={backendUrl}
+                                            onChange={(e) => setBackendUrl(e.target.value)}
+                                            placeholder="http://localhost:3000"
+                                            className="w-full px-3 py-2.5 rounded-lg border-2 border-border bg-background text-foreground text-sm font-mono focus:border-primary transition-all"
+                                        />
+                                        <div className="flex gap-2">
+                                            <button 
+                                                onClick={() => setBackendUrl('https://extenda-pxa6.onrender.com')}
+                                                className="flex-1 text-[10px] font-bold py-2 bg-muted rounded-lg hover:bg-muted-foreground/10 text-foreground transition-all"
+                                            >
+                                                Use Cloud
+                                            </button>
+                                            <button 
+                                                onClick={() => setBackendUrl('http://localhost:3000')}
+                                                className="flex-1 text-[10px] font-bold py-2 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-all border border-primary/20"
+                                            >
+                                                Use Local (3000)
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <div className="flex items-center justify-between p-4 bg-card rounded-xl border border-border">
                                     <div>
                                         <h4 className="text-sm font-medium text-foreground">Auto-execute Workflows</h4>

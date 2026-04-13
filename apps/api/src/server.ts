@@ -22,6 +22,8 @@ import knowledge from './routes/knowledge.js';
 import { vision } from './routes/vision.js';
 import config from './routes/config.js';
 
+import sync from './routes/sync.js';
+
 const app = new Hono<AuthEnv>();
 
 app.use('*', logger());
@@ -40,5 +42,6 @@ app.route('/api/templates', templates);
 app.route('/knowledge', knowledge);
 app.route('/vision', vision);
 app.route('/api/config', config);
+app.route('/api/sync', sync);
 
 export default app;

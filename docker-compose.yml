@@ -19,6 +19,26 @@ services:
     volumes:
       - redis_data:/data
 
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "3000:8080"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/extenda
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=b698597444491c65c8f495d4f6ce228d408bf62eabcf768617aed10f99d16d1a
+      - ENCRYPTION_KEY=b698597444491c65c8f495d4f6ce228d408bf62eabcf768617aed10f99d16d1a
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    depends_on:
+      - postgres
+      - redis
+    restart: always
+
 volumes:
   postgres_data:
   redis_data:
