@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { getApiUrl } from '../lib/api';
+
 
 interface User {
   id: string;
@@ -48,14 +50,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  const signIn = (provider: 'google' | 'github') => {
+  const signIn = async (provider: 'google' | 'github') => {
     const width = 500;
     const height = 600;
     const left = window.screen.width / 2 - width / 2;
     const top = window.screen.height / 2 - height / 2;
 
+    const dynamicApiUrl = await getApiUrl();
+
     window.open(
-      `${API_URL}/oauth/auth/${provider}`,
+      `${dynamicApiUrl}/oauth/auth/${provider}`,
       'extenda_auth',
       `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes,toolbar=no,menubar=no,location=no`
     );
