@@ -38,7 +38,7 @@ console.log('PORT:', process.env.PORT);
 const port = Number(process.env.PORT) || 3000;
 
 app.use('*', cors({
-    origin: true, // Reflect origin to allow all (including dynamic chrome-extension IDs)
+    origin: (origin) => origin, // Reflect origin to allow all (including dynamic chrome-extension IDs)
     credentials: true,
 }));
 
