@@ -90,6 +90,7 @@ function AppContent() {
     const workflowRef = useRef<{ id: string; steps: WorkflowStep[] } | null>(null);
     const [showSyncPrompt, setShowSyncPrompt] = useState(false);
     const [syncing, setSyncing] = useState(false);
+    const [backendUrl, setBackendUrl] = useState<string>('');
 
 
 
@@ -188,6 +189,7 @@ function AppContent() {
 
         const checkBackendChange = async () => {
             const currentUrl = await getApiUrl();
+            setBackendUrl(currentUrl); // Track the active URL
             const result = await chrome.storage.local.get(['lastBackendUrl']);
             
             if (result.lastBackendUrl && result.lastBackendUrl !== currentUrl) {
@@ -198,6 +200,15 @@ function AppContent() {
             }
         };
         checkBackendChange();
+
+        // Listen for storage changes to react to Settings changes
+        const handleStorageChange = (changes: any) => {
+            if (changes.extenda_backend_url) {
+                setBackendUrl(changes.extenda_backend_url.newValue);
+            }
+        };
+        chrome.storage.onChanged.addListener(handleStorageChange);
+        return () => chrome.storage.onChanged.removeListener(handleStorageChange);
     }, []);
 
     const handleSyncData = async () => {
@@ -288,13 +299,17 @@ function AppContent() {
         });
     };
 
-    // useEffect for WebSocket connection - only runs when accessToken changes
+    // useEffect for WebSocket connection - runs when accessToken OR backendUrl changes
     useEffect(() => {
         const connectWs = async () => {
             if (accessToken) {
-                const apiUrl = await getApiUrl();
+                const apiUrl = backendUrl || await getApiUrl();
+                console.log(`[Socket] Connecting to ${apiUrl}...`);
                 wsClient.connect(accessToken, apiUrl);
-                wsClient.on('connect', () => setStatus('Connected'));
+                wsClient.on('connect', () => {
+                    console.log('[Socket] Connected to', apiUrl);
+                    setStatus('Connected');
+                });
                 wsClient.on('disconnect', () => setStatus('Disconnected'));
             } else {
                 wsClient.disconnect();
@@ -306,7 +321,7 @@ function AppContent() {
         return () => {
             if (!accessToken) wsClient.disconnect();
         };
-    }, [accessToken]);
+    }, [accessToken, backendUrl]);
 
     // useEffect for event listeners - runs once on mount
     useEffect(() => {
