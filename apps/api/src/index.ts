@@ -38,16 +38,7 @@ console.log('PORT:', process.env.PORT);
 const port = Number(process.env.PORT) || 3000;
 
 app.use('*', cors({
-    origin: (origin) => {
-        const allowed = [
-            'http://localhost:3000',
-            'http://localhost:5173'
-        ];
-        if (!origin || origin.startsWith('chrome-extension://') || allowed.includes(origin)) {
-            return origin;
-        }
-        return allowed[0]; // Fallback
-    },
+    origin: true, // Reflect origin to allow all (including dynamic chrome-extension IDs)
     credentials: true,
 }));
 
