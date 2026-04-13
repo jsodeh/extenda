@@ -9,7 +9,7 @@ class BackgroundWebSocketClient {
     private currentToken?: string;
     private listeners: Map<string, ((...args: any[]) => void)[]> = new Map();
 
-    connect(token: string) {
+    async connect(token: string) {
         // If already connected with same token, skip
         if (this.socket?.connected && this.currentToken === token) {
             console.log('[BgWS] Already connected');
@@ -23,10 +23,19 @@ class BackgroundWebSocketClient {
 
         this.currentToken = token;
 
-        console.log('[BgWS] Connecting to API (websocket-only)...');
-        // Note: import.meta.env is NOT available in service workers at runtime.
-        // We use the known production URL as default here.
-        const apiUrl = 'https://extenda-pxa6.onrender.com';
+        // Read the user's preferred API URL from storage (set by Settings page)
+        const defaultUrl = 'https://extenda-pxa6.onrender.com';
+        let apiUrl = defaultUrl;
+        try {
+            const stored = await chrome.storage.local.get('extenda_backend_url');
+            if (stored.extenda_backend_url) {
+                apiUrl = stored.extenda_backend_url;
+            }
+        } catch (e) {
+            console.warn('[BgWS] Could not read apiUrl from storage, using default');
+        }
+
+        console.log(`[BgWS] Connecting to API (websocket-only): ${apiUrl}...`);
         this.socket = io(apiUrl, {
             // CRITICAL: Use websocket only - polling fails in Chrome extension service workers
             transports: ['websocket'],
