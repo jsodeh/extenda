@@ -22,7 +22,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: apps/api/Dockerfile
+      dockerfile: Dockerfile
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
