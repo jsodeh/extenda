@@ -57,9 +57,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const top = window.screen.height / 2 - height / 2;
 
     const dynamicApiUrl = await getApiUrl();
+    const cacheBuster = Date.now();
 
     window.open(
-      `${dynamicApiUrl}/oauth/auth/${provider}`,
+      `${dynamicApiUrl}/oauth/auth/${provider}?cb=${cacheBuster}`,
       'extenda_auth',
       `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes,toolbar=no,menubar=no,location=no`
     );
