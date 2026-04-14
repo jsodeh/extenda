@@ -187,86 +187,22 @@ function AppContent() {
             setShowOnboarding(true);
         }
 
-        const checkBackendChange = async () => {
+        const checkEnvironment = async () => {
             const currentUrl = await getApiUrl();
-            setBackendUrl(currentUrl); // Track the active URL
-            const result = await chrome.storage.local.get(['lastBackendUrl']);
-            
-            if (result.lastBackendUrl && result.lastBackendUrl !== currentUrl) {
-                setShowSyncPrompt(true);
-            } else if (!result.lastBackendUrl) {
-                // Initialize if first time
-                await chrome.storage.local.set({ lastBackendUrl: currentUrl });
-            }
+            setBackendUrl(currentUrl);
         };
-        checkBackendChange();
+        checkEnvironment();
 
         // Listen for storage changes - Hard reload on backend switch for 100% reliability
         const handleStorageChange = (changes: any) => {
-            if (changes.extenda_backend_url && changes.extenda_backend_url.oldValue !== changes.extenda_backend_url.newValue) {
-                console.log('[Sync] Backend URL changed, refreshing app...');
+            if (changes.extenda_backend_target || changes.extenda_backend_url) {
+                console.log('[Sync] Backend environment changed, refreshing app...');
                 window.location.reload();
             }
         };
         chrome.storage.onChanged.addListener(handleStorageChange);
         return () => chrome.storage.onChanged.removeListener(handleStorageChange);
     }, []);
-
-    const handleSyncData = async () => {
-        setSyncing(true);
-        try {
-            const API_URL = await getApiUrl();
-            const { lastBackendUrl } = await chrome.storage.local.get(['lastBackendUrl']);
-            
-            if (!lastBackendUrl || lastBackendUrl === API_URL) {
-                console.log('[Sync] No previous backend found or URLs match. Skipping.');
-                setShowSyncPrompt(false);
-                return;
-            }
-
-            console.log(`[Sync] Moving data from ${lastBackendUrl} to ${API_URL}`);
-            
-            // 1. Export from OLD backend
-            const exportResponse = await fetch(`${lastBackendUrl}/api/sync/export`, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-            });
-            
-            if (!exportResponse.ok) throw new Error('Failed to export data from old backend');
-            const { bundle } = await exportResponse.json();
-
-            // 2. Import into NEW backend
-            const importResponse = await fetch(`${API_URL}/api/sync/import`, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${accessToken}`
-                },
-                body: JSON.stringify({ bundle })
-            });
-
-            if (!importResponse.ok) throw new Error('Failed to import data to new backend');
-
-            // 3. Mark as synced and update current
-            await chrome.storage.local.set({ lastBackendUrl: API_URL });
-            setShowSyncPrompt(false);
-            
-            // Reload to show new messages/history
-            window.location.reload(); 
-        } catch (error) {
-            console.error('Sync failed:', error);
-            // Even if it fails, maybe we should offer a way to dismiss? 
-            // For now, let's just alert the user.
-            alert('Sync failed. Please ensure both backends are reachable.');
-        } finally {
-            setSyncing(false);
-        }
-    };
-
-    const dismissSync = async () => {
-        const currentUrl = await getApiUrl();
-        await chrome.storage.local.set({ lastBackendUrl: currentUrl });
-        setShowSyncPrompt(false);
-    };
 
     const scrollToBottom = () => {
         // slight delay to ensure DOM updates are painted

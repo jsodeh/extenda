@@ -83,10 +83,16 @@ let debugLogged = false;
 function logDebugOnce() {
     if (!debugLogged) {
         const providers = getOAuthProviders();
-        console.log('OAuth Auth Providers Configuration:');
-        console.log('Google client_id:', providers.google.clientId || '(empty)');
-        console.log('Google client_secret:', providers.google.clientSecret ? '(set)' : '(empty)');
-        console.log('Google redirect_uri:', providers.google.redirectUri);
+        console.log('--- OAuth Auth Configuration Validation ---');
+        console.log('Google Auth Client ID:', providers.google.clientId ? '✅ Present' : '❌ MISSING');
+        console.log('Google Auth Client Secret:', providers.google.clientSecret ? '✅ Present' : '❌ MISSING');
+        console.log('Google Auth Redirect URI:', providers.google.redirectUri);
+        
+        if (!providers.google.clientId) {
+            console.error('CRITICAL: GOOGLE_CLIENT_ID is not defined. Google Authentication will fail.');
+        }
+        
+        console.log('-------------------------------------------');
         debugLogged = true;
     }
 }
@@ -128,7 +134,10 @@ authOAuth.get('/:provider', (c) => {
     }
 
     const finalUrl = `${config.authUrl}?${params.toString()}`;
-    console.log(`[OAuth Debug] Redirecting to: ${finalUrl}`);
+    console.log(`[OAuth] Redirecting user to Google for ${provider} auth...`);
+    if (!config.clientId) {
+        console.error(`[OAuth ERROR] Attempted to initiate ${provider} auth but clientId is EMPTY.`);
+    }
     return c.redirect(finalUrl);
 });
 

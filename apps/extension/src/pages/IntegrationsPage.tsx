@@ -3,6 +3,8 @@ import { initiateOAuthFlow, fetchConnectedProviders, disconnectProvider } from '
 import { Check, X, Loader, Shield, Lock, Eye, AlertTriangle, Settings, ChevronRight, RotateCcw } from 'lucide-react';
 import { ADAPTERS, Adapter, ToolAction, PermissionLevel } from '../lib/tools/adapters';
 import { getApiUrl } from '../lib/api';
+import IntegrationProgressOverlay, { IntegrationAction } from '../components/IntegrationProgressOverlay';
+import { showToast } from '../components/Toast';
 
 // --- Components ---
 
@@ -47,10 +49,14 @@ export default function IntegrationsPage() {
     const [adapters, setAdapters] = useState<Adapter[]>([]);
     const [connectedProviders, setConnectedProviders] = useState<Set<string>>(new Set());
     const [toolPermissions, setToolPermissions] = useState<Record<string, PermissionLevel>>({});
-    const [loading, setLoading] = useState<string | null>(null);
     const [loadingSettings, setLoadingSettings] = useState(true);
     const [selectedAdapter, setSelectedAdapter] = useState<Adapter | null>(null);
     const [accessToken, setAccessToken] = useState<string | null>(null);
+    
+    // Overlay State
+    const [overlayAction, setOverlayAction] = useState<IntegrationAction>(null);
+    const [overlayProvider, setOverlayProvider] = useState<Adapter | null>(null);
+    const [overlayError, setOverlayError] = useState<string | undefined>();
 
     useEffect(() => {
         const init = async () => {
@@ -125,17 +131,16 @@ export default function IntegrationsPage() {
     };
 
     const handlePermissionChange = async (actionId: string, level: PermissionLevel) => {
+        const previous = toolPermissions[actionId];
         const updated = { ...toolPermissions, [actionId]: level };
         setToolPermissions(updated);
         
-        // Save locally for instant reaction
-        await chrome.storage.local.set({ tool_permissions: updated });
+        try {
+            await chrome.storage.local.set({ tool_permissions: updated });
 
-        // Sync to backend (Fire & Forget/Optimistic)
-        if (accessToken) {
-            try {
+            if (accessToken) {
                 const API_URL = await getApiUrl();
-                fetch(`${API_URL}/api/preferences`, {
+                const res = await fetch(`${API_URL}/api/preferences`, {
                     method: 'PATCH',
                     headers: { 
                         'Content-Type': 'application/json',
@@ -143,39 +148,78 @@ export default function IntegrationsPage() {
                     },
                     body: JSON.stringify({ toolPermissions: updated })
                 });
-            } catch (err) {
-                console.warn('Silent sync failure:', err);
+                
+                if (!res.ok) throw new Error('Backend sync failed');
             }
+            showToast('success', 'Permission updated successfully');
+        } catch (err) {
+            console.warn('Sync failure:', err);
+            // Revert on failure
+            setToolPermissions({ ...updated, [actionId]: previous });
+            showToast('error', 'Failed to save permission. Reverted to previous state.');
         }
     };
 
     const handleSyncReset = async () => {
         if (!confirm('Revert all tool permissions to defaults?')) return;
-        const defaults: Record<string, PermissionLevel> = {};
-        adapters.forEach(a => a.actions.forEach(act => defaults[act.id] = (act as any).defaultPermission || 'allowed'));
-        setToolPermissions(defaults);
-        await chrome.storage.local.set({ tool_permissions: defaults });
+        
+        setOverlayAction('reset');
+        setOverlayProvider(null);
+        setOverlayError(undefined);
+
+        try {
+            const defaults: Record<string, PermissionLevel> = {};
+            adapters.forEach(a => a.actions.forEach(act => defaults[act.id] = (act as any).defaultPermission || 'allowed'));
+            setToolPermissions(defaults);
+            await chrome.storage.local.set({ tool_permissions: defaults });
+            
+            // Artificial delay for UX visibility
+            await new Promise(resolve => setTimeout(resolve, 800));
+            setOverlayAction(null);
+            showToast('success', 'All tool permissions have been reset to defaults');
+        } catch (err) {
+            setOverlayError('Failed to reset permissions.');
+        }
     };
 
-    const handleConnect = async (providerId: string) => {
-        setLoading(providerId);
-        const result = await initiateOAuthFlow(providerId);
+    const handleConnect = async (adapter: Adapter) => {
+        if (!adapter.provider) return;
+        
+        setOverlayAction('connect');
+        setOverlayProvider(adapter);
+        setOverlayError(undefined);
+        
+        const result = await initiateOAuthFlow(adapter.provider);
         if (result.success) {
             await fetchDiscoveryStatus(accessToken);
+            setOverlayAction(null);
+            showToast('success', `Successfully connected to ${adapter.name}`);
         } else {
-            alert(`Connect failed: ${result.error}`);
+            setOverlayError(result.error || 'Failed to authorize with the provider.');
         }
-        setLoading(null);
     };
 
-    const handleDisconnect = async (providerId: string) => {
-        if (!confirm(`Disconnect ${providerId}?`)) return;
-        setLoading(providerId);
-        const success = await disconnectProvider(providerId);
+    const handleDisconnect = async (adapter: Adapter) => {
+        if (!adapter.provider) return;
+        
+        setOverlayAction('disconnect');
+        setOverlayProvider(adapter);
+        setOverlayError(undefined);
+        
+        const success = await disconnectProvider(adapter.provider);
         if (success) {
             await fetchDiscoveryStatus(accessToken);
+            setOverlayAction(null);
+            showToast('success', `Disconnected from ${adapter.name}`);
+        } else {
+            setOverlayError('Failed to disconnect from the provider. Please try again.');
         }
-        setLoading(null);
+    };
+
+    const onRetryOverlay = () => {
+        if (overlayAction === 'connect' && overlayProvider) handleConnect(overlayProvider);
+        if (overlayAction === 'disconnect' && overlayProvider) handleDisconnect(overlayProvider);
+        if (overlayAction === 'reset') handleSyncReset();
     };
 
     if (loadingSettings) {
@@ -203,6 +247,15 @@ export default function IntegrationsPage() {
                     <span>Reset Defaults</span>
                 </button>
             </div>
+
+            <IntegrationProgressOverlay 
+                action={overlayAction} 
+                providerName={overlayProvider?.name}
+                icon={overlayProvider?.icon}
+                error={overlayError}
+                onRetry={overlayError ? onRetryOverlay : undefined}
+                onCancel={() => setOverlayAction(null)}
+            />
 
             {/* Compact Grid */}
             <div className="flex-1 overflow-y-auto p-4 scrollbar-hide">
@@ -274,20 +327,18 @@ export default function IntegrationsPage() {
                             <div className="px-6 mb-4">
                                 {connectedProviders.has(selectedAdapter.provider) ? (
                                     <button 
-                                        onClick={() => handleDisconnect(selectedAdapter.provider!)}
-                                        disabled={loading === selectedAdapter.provider}
-                                        className="w-full py-2 rounded-xl bg-destructive/10 text-destructive text-xs font-bold flex items-center justify-center gap-2 border border-destructive/20 hover:bg-destructive hover:text-white transition-all"
+                                        onClick={() => handleDisconnect(selectedAdapter)}
+                                        className="w-full py-2 rounded-xl bg-destructive/10 text-destructive text-xs font-bold flex items-center justify-center gap-2 border border-destructive/20 hover:bg-destructive hover:text-white transition-all active:scale-95"
                                     >
-                                        {loading === selectedAdapter.provider ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Lock className="w-3.5 h-3.5" />}
+                                        <Lock className="w-3.5 h-3.5" />
                                         Disconnect Account
                                     </button>
                                 ) : (
                                     <button 
-                                        onClick={() => handleConnect(selectedAdapter.provider!)}
-                                        disabled={loading === selectedAdapter.provider}
+                                        onClick={() => handleConnect(selectedAdapter)}
                                         className="w-full py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all"
                                     >
-                                        {loading === selectedAdapter.provider ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                                        <ChevronRight className="w-3.5 h-3.5" />
                                         Connect {selectedAdapter.name}
                                     </button>
                                 )}

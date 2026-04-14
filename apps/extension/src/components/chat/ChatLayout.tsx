@@ -4,6 +4,9 @@ import { Moon, Sun, RefreshCw } from 'lucide-react';
 import NavigationMenu, { Page } from '../NavigationMenu';
 import iconLight from '../../assets/icon-light.png';
 import iconDark from '../../assets/icon-dark.png';
+import EnvironmentSwitcher from '../EnvironmentSwitcher';
+import SwitchProgressOverlay from '../SwitchProgressOverlay';
+import { envService, EnvironmentState } from '../../lib/environment-service';
 
 interface ChatLayoutProps {
     children: React.ReactNode;
@@ -15,9 +18,21 @@ interface ChatLayoutProps {
 
 export function ChatLayout({ children, currentPage, onNavigate, status, onReconnect }: ChatLayoutProps) {
     const { theme, setTheme } = useTheme();
+    const [envState, setEnvState] = React.useState<EnvironmentState>(envService.getState());
+
+    React.useEffect(() => {
+        return envService.subscribe(s => setEnvState(s));
+    }, []);
 
     return (
         <div className="flex flex-col h-screen bg-background text-foreground transition-colors duration-300">
+            <SwitchProgressOverlay 
+                target={envState.current}
+                isSwitching={envState.isSwitching}
+                error={envState.lastError}
+                onRetry={() => envService.switchTo(envState.current)}
+                onCancel={() => envService.probe()} // Simple revert to idle
+            />
             {/* Header - Fixed Background and Visibility */}
             <header className="flex-none border-b border-border bg-card px-4 py-3 z-10 shadow-sm">
                 <div className="flex items-center justify-between">
@@ -34,25 +49,7 @@ export function ChatLayout({ children, currentPage, onNavigate, status, onReconn
                             className="h-6 w-auto hidden dark:block drop-shadow-sm transition-opacity duration-300"
                         />
                         
-                        {/* Connection indicator */}
-                        <div className="flex items-center gap-1 ml-1">
-                            <div
-                                className={`w-2 h-2 rounded-full ${status === 'Connected'
-                                    ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]'
-                                    : 'bg-destructive animate-pulse'
-                                    }`}
-                                title={status}
-                            />
-                            {status !== 'Connected' && onReconnect && (
-                                <button
-                                    onClick={onReconnect}
-                                    className="p-1 rounded-full hover:bg-muted text-muted-foreground transition-all active:scale-95"
-                                    title="Reconnect"
-                                >
-                                    <RefreshCw size={12} strokeWidth={2.5} />
-                                </button>
-                            )}
-                        </div>
+                        <EnvironmentSwitcher />
                     </div>
 
                     <div className="flex items-center gap-2">
