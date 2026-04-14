@@ -1,262 +1,300 @@
 import { useEffect, useState } from 'react';
 import { initiateOAuthFlow, fetchConnectedProviders, disconnectProvider } from '../lib/oauth';
-import { Check, X, Loader, MoreVertical, ExternalLink, Settings } from 'lucide-react';
+import { Check, X, Loader, Shield, Lock, Eye, AlertTriangle, Settings, ChevronRight } from 'lucide-react';
+import { ADAPTERS, Adapter, ToolAction, PermissionLevel } from '../lib/tools/adapters';
+import { getApiUrl } from '../lib/api';
 
-// Assuming custom simple dropdown since Radix might not be there. Let's use simple state-based dropdown or just buttons.
-// The user asked for "dropdown of all available actions".
+// --- Components ---
 
-// Icon imports
-import googleIcon from '../assets/google.png';
-import slackIcon from '../assets/slack.png'; // Need to check if these exist, I copied them.
-import jiraIcon from '../assets/jira.svg'; // Defaulting to png if invalid
-import asanaIcon from '../assets/asana.png';
-import notionIcon from '../assets/notion.png';
-import hubspotIcon from '../assets/hubspot.png'; // I need to verify filenames. I copied `icons/*.png`.
-// Checking list_dir of icons folder from memory:
-// asana.png, github.png, gmail.png, google.png, google_docs.png, google_drive.png, google_sheet.png, linkedin.png, notion.png.
-// No slack, jira, hubspot in the root icons list I saw?
-// Wait, I saw "asana.png", "github.png", "gmail.png", "google.png"...
-// I need to use the available ones.
-import gmailIcon from '../assets/gmail.png';
-import googleDocsIcon from '../assets/google_docs.png';
-import googleDriveIcon from '../assets/google_drive.png';
-import githubIcon from '../assets/github.png';
-import linkedinIcon from '../assets/linkedin.png';
-
-interface Provider {
-    id: string;
-    name: string;
-    description: string;
-    icon: string;
-    scopes: string[];
-    actions: string[];
+interface ActionItemProps {
+    action: ToolAction;
+    permission: PermissionLevel;
+    onChange: (level: PermissionLevel) => void;
 }
 
-
-const PROVIDERS: Provider[] = [
-    {
-        id: 'google',
-        name: 'Google',
-        description: 'Connect Gmail, Calendar, and Drive',
-        icon: googleIcon,
-        scopes: ['Gmail', 'Calendar', 'Drive'],
-        actions: ['Summarize Emails', 'Draft Reply', 'Check Calendar']
-    },
-    {
-        id: 'github',
-        name: 'GitHub',
-        description: 'Manage issues and PRs',
-        icon: githubIcon,
-        scopes: ['Repo', 'User'],
-        actions: ['List Issues', 'Create Issue', 'Review PR']
-    },
-    {
-        id: 'linkedin',
-        name: 'LinkedIn',
-        description: 'Network and post updates',
-        icon: linkedinIcon,
-        scopes: ['Profile', 'Post'],
-        actions: ['Brief Profile', 'Generate Post']
-    },
-    {
-        id: 'asana',
-        name: 'Asana',
-        description: 'Manage tasks and projects',
-        icon: asanaIcon,
-        scopes: ['Tasks', 'Projects'],
-        actions: ['List Tasks', 'Create Task']
-    },
-    {
-        id: 'notion',
-        name: 'Notion',
-        description: 'Create and manage pages',
-        icon: notionIcon,
-        scopes: ['Pages', 'Databases'],
-        actions: ['Read Page', 'Append Content']
-    }
-];
-
-// Helper component for Dropdown
-function ActionDropdown({ actions }: { actions: string[] }) {
-    const [isOpen, setIsOpen] = useState(false);
+function ActionItem({ action, permission, onChange }: ActionItemProps) {
     return (
-        <div className="relative">
-            <button
-                onClick={() => setIsOpen(!isOpen)}
-                className="p-1 hover:bg-muted rounded-full transition-colors"
+        <div className="flex items-center justify-between p-3 rounded-xl bg-muted/40 border border-border/40 mb-2">
+            <div className="flex-1 mr-4">
+                <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">{action.name}</span>
+                    {permission === 'approval_required' && (
+                        <div className="px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-500 border border-amber-500/20 flex items-center gap-1">
+                            <Eye className="w-3 h-3" />
+                            <span className="text-[10px] font-bold uppercase tracking-tighter">Review Required</span>
+                        </div>
+                    )}
+                </div>
+                <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{action.description}</p>
+            </div>
+            
+            <select 
+                value={permission}
+                onChange={(e) => onChange(e.target.value as PermissionLevel)}
+                className="bg-card text-foreground text-xs font-medium py-1 px-2 rounded-lg border border-border shadow-sm focus:ring-1 focus:ring-primary outline-none transition-all cursor-pointer"
             >
-                <MoreVertical className="h-5 w-5 text-muted-foreground" />
-            </button>
-            {isOpen && (
-                <>
-                    <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
-                    <div className="absolute right-0 mt-2 w-48 bg-card rounded-md shadow-lg z-20 border border-border py-1 overflow-hidden">
-                        {actions.map(action => (
-                            <button
-                                key={action}
-                                className="block w-full text-left px-4 py-2 text-sm text-foreground hover:bg-muted transition-colors"
-                                onClick={() => setIsOpen(false)}
-                            >
-                                {action}
-                            </button>
-                        ))}
-                    </div>
-                </>
-            )}
+                <option value="allowed">Allowed</option>
+                <option value="approval_required">Ask (Approval)</option>
+                <option value="disabled">Disabled</option>
+            </select>
         </div>
     );
 }
 
+// --- Main Page ---
+
 export default function IntegrationsPage() {
     const [connectedProviders, setConnectedProviders] = useState<Set<string>>(new Set());
+    const [toolPermissions, setToolPermissions] = useState<Record<string, PermissionLevel>>({});
     const [loading, setLoading] = useState<string | null>(null);
-    const [loadingPage, setLoadingPage] = useState(true);
+    const [loadingSettings, setLoadingSettings] = useState(true);
+    const [selectedAdapter, setSelectedAdapter] = useState<Adapter | null>(null);
+    const [accessToken, setAccessToken] = useState<string | null>(null);
 
     useEffect(() => {
-        loadConnectedProviders();
+        const init = async () => {
+            setLoadingSettings(true);
+            const { accessToken } = await chrome.storage.local.get(['accessToken']);
+            setAccessToken(accessToken);
+            
+            await loadPreferences(accessToken);
+            await loadConnectedProviders();
+            setLoadingSettings(false);
+        };
+        init();
     }, []);
 
+    const loadPreferences = async (token: string | null) => {
+        try {
+            // 1. Try local storage first
+            const local = await chrome.storage.local.get(['tool_permissions']);
+            if (local.tool_permissions) {
+                setToolPermissions(local.tool_permissions);
+            }
+
+            // 2. Fetch from cloud
+            if (token) {
+                const API_URL = await getApiUrl();
+                const response = await fetch(`${API_URL}/api/preferences`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.toolPermissions) {
+                        setToolPermissions(data.toolPermissions);
+                        chrome.storage.local.set({ tool_permissions: data.toolPermissions });
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Failed to load preferences:', err);
+        }
+    };
+
     const loadConnectedProviders = async () => {
-        setLoadingPage(true);
         const providers = await fetchConnectedProviders();
         setConnectedProviders(new Set(providers));
-        setLoadingPage(false);
+    };
+
+    const handlePermissionChange = async (actionId: string, level: PermissionLevel) => {
+        const updated = { ...toolPermissions, [actionId]: level };
+        setToolPermissions(updated);
+        
+        // Save locally for instant reaction
+        await chrome.storage.local.set({ tool_permissions: updated });
+
+        // Sync to backend (Fire & Forget/Optimistic)
+        if (accessToken) {
+            try {
+                const API_URL = await getApiUrl();
+                fetch(`${API_URL}/api/preferences`, {
+                    method: 'PATCH',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${accessToken}`
+                    },
+                    body: JSON.stringify({ toolPermissions: updated })
+                });
+            } catch (err) {
+                console.warn('Silent sync failure:', err);
+            }
+        }
+    };
+
+    const handleSyncReset = async () => {
+        if (!confirm('Revert all tool permissions to defaults?')) return;
+        const defaults: Record<string, PermissionLevel> = {};
+        ADAPTERS.forEach(a => a.actions.forEach(act => defaults[act.id] = act.defaultPermission));
+        setToolPermissions(defaults);
+        await chrome.storage.local.set({ tool_permissions: defaults });
+        // Backend sync...
     };
 
     const handleConnect = async (providerId: string) => {
         setLoading(providerId);
         const result = await initiateOAuthFlow(providerId);
-
         if (result.success) {
             setConnectedProviders(prev => new Set([...prev, providerId]));
+            await loadConnectedProviders();
         } else {
-            alert(`Failed to connect: ${result.error || 'Unknown error'}`);
+            alert(`Connect failed: ${result.error}`);
         }
-
         setLoading(null);
     };
 
     const handleDisconnect = async (providerId: string) => {
-        if (!confirm(`Are you sure you want to disconnect ${providerId}?`)) return;
-
+        if (!confirm(`Disconnect ${providerId}?`)) return;
         setLoading(providerId);
         const success = await disconnectProvider(providerId);
-
         if (success) {
             setConnectedProviders(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(providerId);
-                return newSet;
+                const n = new Set(prev);
+                n.delete(providerId);
+                return n;
             });
-        } else {
-            alert('Failed to disconnect provider');
         }
-
         setLoading(null);
     };
 
-    if (loadingPage) {
+    if (loadingSettings) {
         return (
             <div className="flex items-center justify-center h-full bg-background">
-                <Loader className="h-8 w-8 animate-spin text-primary" />
+                <Loader className="h-6 w-6 animate-spin text-primary" />
             </div>
         );
     }
 
     return (
-        <div className="flex flex-col h-full bg-background">
-            {/* Header - Hidden since SettingsPage has its own header, but keeping structure for safety if needed separately */}
-            {/* <div className="border-b border-border bg-background px-6 py-4 shadow-sm">
-                <h1 className="text-2xl font-bold text-foreground">Integrations</h1>
-                <p className="text-sm text-muted-foreground mt-1">
-                    Connect your accounts to enable powerful automations
-                </p>
-            </div> */}
+        <div className="flex flex-col h-full bg-background animate-in fade-in duration-500">
+            {/* Minimal Header */}
+            <div className="px-6 py-3 border-b border-border/50 flex items-center justify-between">
+                <div>
+                    <h2 className="text-sm font-bold text-foreground">Integrations</h2>
+                    <p className="text-[10px] text-muted-foreground">Configure AI tool access</p>
+                </div>
+                <button 
+                   onClick={handleSyncReset}
+                   className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground transition-colors"
+                >
+                    <Settings className="w-3.5 h-3.5" />
+                </button>
+            </div>
 
-            {/* Provider Grid */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-                <div className="grid grid-cols-1 gap-4 max-w-4xl mx-auto">
-                    {PROVIDERS.map((provider) => {
-                        const isConnected = connectedProviders.has(provider.id);
-                        const isLoading = loading === provider.id;
-
+            {/* Compact Grid */}
+            <div className="flex-1 overflow-y-auto p-4 scrollbar-hide">
+                <div className="grid grid-cols-2 gap-3">
+                    {ADAPTERS.map((adapter) => {
+                        const isConnected = adapter.type === 'built-in' || (adapter.provider && connectedProviders.has(adapter.provider));
+                        
                         return (
-                            <div
-                                key={provider.id}
-                                className="bg-card rounded-xl border border-border p-4 sm:p-5 shadow-sm hover:border-primary/20 transition-all group"
+                            <button
+                                key={adapter.id}
+                                onClick={() => setSelectedAdapter(adapter)}
+                                className="flex flex-col aspect-square rounded-2xl border border-border bg-card p-3 text-left hover:border-primary/40 hover:shadow-md transition-all group relative overflow-hidden active:scale-95"
                             >
-                                {/* Provider Header */}
-                                <div className="flex items-start justify-between mb-3">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center p-1.5">
-                                            <img src={provider.icon} alt={provider.name} className="w-full h-full object-contain" />
-                                        </div>
-                                        <div>
-                                            <h3 className="text-base font-semibold text-foreground">
-                                                {provider.name}
-                                            </h3>
-                                            <p className="text-xs text-muted-foreground">
-                                                {provider.description}
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-2">
-                                        {isConnected && (
-                                            <div className="flex items-center gap-1 text-emerald-500">
-                                                <Check className="h-4 w-4" />
-                                                <span className="text-[10px] font-bold uppercase tracking-wider">Connected</span>
-                                            </div>
+                                <div className="mb-auto">
+                                   <div className={`w-8 h-8 rounded-xl ${isConnected ? 'bg-primary/10' : 'bg-muted'} flex items-center justify-center p-1.5 transition-colors`}>
+                                        {adapter.icon ? (
+                                            <img src={adapter.icon} alt={adapter.name} className={`w-full h-full object-contain ${isConnected ? '' : 'grayscale opacity-50'}`} />
+                                        ) : (
+                                            <Shield className={`w-full h-full ${isConnected ? 'text-primary' : 'text-muted-foreground'}`} />
                                         )}
-                                        <ActionDropdown actions={provider.actions} />
+                                   </div>
+                                </div>
+                                
+                                <div>
+                                    <h4 className="text-[11px] font-bold text-foreground truncate">{adapter.name}</h4>
+                                    <div className="flex items-center gap-1 mt-0.5">
+                                        <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-muted-foreground/30'}`} />
+                                        <span className="text-[9px] text-muted-foreground font-medium">{isConnected ? 'Enabled' : 'Disabled'}</span>
                                     </div>
                                 </div>
 
-                                {/* Scopes */}
-                                <div className="flex flex-wrap gap-1.5 mb-4">
-                                    {provider.scopes.map((scope) => (
-                                        <span
-                                            key={scope}
-                                            className="px-2 py-0.5 bg-muted/60 text-muted-foreground text-[10px] font-medium rounded-full border border-border/10"
-                                        >
-                                            {scope}
-                                        </span>
-                                    ))}
-                                </div>
-
-                                {/* Action Button */}
-                                <button
-                                    onClick={() => isConnected ? handleDisconnect(provider.id) : handleConnect(provider.id)}
-                                    disabled={isLoading}
-                                    className={`w-full py-2.5 px-4 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2 ${isConnected
-                                        ? 'bg-destructive/10 text-destructive hover:bg-destructive hover:text-destructive-foreground border border-destructive/20'
-                                        : 'bg-primary text-primary-foreground hover:opacity-90 shadow-md active:scale-95'
-                                        } disabled:opacity-50 disabled:cursor-not-allowed`}
-                                >
-                                    {isLoading ? (
-                                        <>
-                                            <Loader className="h-4 w-4 animate-spin" />
-                                            <span>Processing...</span>
-                                        </>
-                                    ) : isConnected ? (
-                                        <>
-                                            <X className="h-4 w-4" />
-                                            <span>Disconnect</span>
-                                        </>
-                                    ) : (
-                                        <span>Connect {provider.name}</span>
-                                    )}
-                                </button>
-                            </div>
+                                <ChevronRight className="absolute bottom-3 right-3 w-3 h-3 text-muted-foreground/30 group-hover:text-primary transition-colors" />
+                            </button>
                         );
                     })}
                 </div>
-
-                {/* Connected Count */}
-                <div className="text-center mt-8 text-[11px] font-medium text-muted-foreground/60 uppercase tracking-widest">
-                    {connectedProviders.size} of {PROVIDERS.length} connected
-                </div>
             </div>
+
+            {/* Modal Overlay */}
+            {selectedAdapter && (
+                <div className="fixed inset-0 z-50 flex flex-col justify-end bg-background/80 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div 
+                        className="absolute inset-0" 
+                        onClick={() => setSelectedAdapter(null)} 
+                    />
+                    
+                    <div className="relative bg-card border-t border-border rounded-t-3xl shadow-2xl w-full max-h-[85vh] flex flex-col animate-in slide-in-from-bottom-full duration-400">
+                        {/* Modal Header */}
+                        <div className="px-6 pt-6 pb-4 flex items-start justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 rounded-2xl bg-muted flex items-center justify-center p-2">
+                                    {selectedAdapter.icon ? (
+                                        <img src={selectedAdapter.icon} alt={selectedAdapter.name} className="w-full h-full object-contain" />
+                                    ) : (
+                                        <Shield className="w-full h-full text-muted-foreground" />
+                                    )}
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-bold text-foreground leading-tight">{selectedAdapter.name}</h3>
+                                    <p className="text-xs text-muted-foreground pr-4 mt-0.5">{selectedAdapter.description}</p>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={() => setSelectedAdapter(null)}
+                                className="p-2 rounded-full hover:bg-muted text-muted-foreground transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Connection Controls (for OAuth) */}
+                        {selectedAdapter.type === 'oauth' && selectedAdapter.provider && (
+                            <div className="px-6 mb-4">
+                                {connectedProviders.has(selectedAdapter.provider) ? (
+                                    <button 
+                                        onClick={() => handleDisconnect(selectedAdapter.provider!)}
+                                        disabled={loading === selectedAdapter.provider}
+                                        className="w-full py-2 rounded-xl bg-destructive/10 text-destructive text-xs font-bold flex items-center justify-center gap-2 border border-destructive/20 hover:bg-destructive hover:text-white transition-all"
+                                    >
+                                        {loading === selectedAdapter.provider ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Lock className="w-3.5 h-3.5" />}
+                                        Disconnect Account
+                                    </button>
+                                ) : (
+                                    <button 
+                                        onClick={() => handleConnect(selectedAdapter.provider!)}
+                                        disabled={loading === selectedAdapter.provider}
+                                        className="w-full py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all"
+                                    >
+                                        {loading === selectedAdapter.provider ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                                        Connect {selectedAdapter.name}
+                                    </button>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="h-px bg-border/50 mx-6 mb-4" />
+
+                        {/* Actions Scrollview */}
+                        <div className="flex-1 overflow-y-auto px-6 pb-8">
+                            <h5 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                                <AlertTriangle className="w-3 h-3" />
+                                Granular Permissions
+                            </h5>
+                            
+                            {selectedAdapter.actions.map(action => (
+                                <ActionItem 
+                                    key={action.id}
+                                    action={action}
+                                    permission={toolPermissions[action.id] || action.defaultPermission}
+                                    onChange={(level) => handlePermissionChange(action.id, level)}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

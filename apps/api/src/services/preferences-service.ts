@@ -6,6 +6,7 @@ export interface UserPreferences {
     userId: string;
     dataSources?: Record<string, any>;
     enabledTools?: string[];
+    toolPermissions?: Record<string, string>;
     aiSettings?: Record<string, any>;
     customPrompt?: string | null;
     promptStyle?: string;
@@ -36,6 +37,7 @@ export class PreferencesService {
             userId: row.userId as string,
             dataSources: row.dataSources as any,
             enabledTools: row.enabledTools as any,
+            toolPermissions: row.toolPermissions as any,
             aiSettings: row.aiSettings as any,
             customPrompt: row.customPrompt,
             promptStyle: row.promptStyle || 'professional'
@@ -62,6 +64,7 @@ export class PreferencesService {
             userId: preferences.userId as any,
             dataSources: preferences.dataSources,
             enabledTools: preferences.enabledTools,
+            toolPermissions: preferences.toolPermissions,
             aiSettings: preferences.aiSettings,
             customPrompt: preferences.customPrompt,
             promptStyle: preferences.promptStyle || 'professional',
@@ -71,6 +74,7 @@ export class PreferencesService {
             set: {
                 dataSources: preferences.dataSources,
                 enabledTools: preferences.enabledTools,
+                toolPermissions: preferences.toolPermissions,
                 aiSettings: preferences.aiSettings,
                 customPrompt: preferences.customPrompt,
                 promptStyle: preferences.promptStyle || 'professional',

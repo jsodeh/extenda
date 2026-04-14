@@ -23,6 +23,7 @@ preferences.get('/', async (c) => {
             return c.json({
                 dataSources: { history: true, bookmarks: false, tabs: true },
                 enabledTools: [],
+                toolPermissions: {},
                 aiSettings: {},
                 customPrompt: null,
                 promptStyle: 'professional'
@@ -51,6 +52,7 @@ preferences.put('/', async (c) => {
             userId,
             dataSources: body.dataSources,
             enabledTools: body.enabledTools,
+            toolPermissions: body.toolPermissions,
             aiSettings: body.aiSettings,
             customPrompt: body.customPrompt,
             promptStyle: body.promptStyle
@@ -79,6 +81,7 @@ preferences.patch('/', async (c) => {
             userId,
             dataSources: body.dataSources || existing?.dataSources,
             enabledTools: body.enabledTools || existing?.enabledTools,
+            toolPermissions: body.toolPermissions || existing?.toolPermissions,
             aiSettings: body.aiSettings || existing?.aiSettings,
             customPrompt: body.customPrompt !== undefined ? body.customPrompt : existing?.customPrompt,
             promptStyle: body.promptStyle || existing?.promptStyle

@@ -124,6 +124,7 @@ export const userPreferences = pgTable('user_preferences', {
     userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).primaryKey(),
     dataSources: jsonb('data_sources').default({}),
     enabledTools: jsonb('enabled_tools').default([]),
+    toolPermissions: jsonb('tool_permissions').default({}),
     aiSettings: jsonb('ai_settings').default({}),
     customPrompt: text('custom_prompt'),
     promptStyle: text('prompt_style').default('professional'),
