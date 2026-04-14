@@ -26,7 +26,10 @@ export default function LoginPage({ onSwitch }: { onSwitch: () => void }) {
 
                     <div className="space-y-2.5">
                         <button
-                            onClick={() => signIn('google')}
+                            onClick={() => {
+                                console.log('[Auth] Attempting Google Sign In...');
+                                signIn('google')
+                            }}
                             className="w-full bg-card text-foreground py-2.5 px-4 rounded-xl text-sm font-semibold flex items-center justify-center gap-2.5 hover:bg-muted transition-all active:scale-95 border border-border shadow-sm"
                         >
                             <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24">

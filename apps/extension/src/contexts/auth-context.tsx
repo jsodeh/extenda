@@ -58,9 +58,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const dynamicApiUrl = await getApiUrl();
     const cacheBuster = Date.now();
+    const popupUrl = `${dynamicApiUrl}/oauth/auth/${provider}?cb=${cacheBuster}`;
+    console.log(`[Auth] Opening popup: ${popupUrl}`);
 
     window.open(
-      `${dynamicApiUrl}/oauth/auth/${provider}?cb=${cacheBuster}`,
+      popupUrl,
       'extenda_auth',
       `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes,toolbar=no,menubar=no,location=no`
     );

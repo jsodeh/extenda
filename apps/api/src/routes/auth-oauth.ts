@@ -127,7 +127,9 @@ authOAuth.get('/:provider', (c) => {
         params.append('prompt', 'consent');
     }
 
-    return c.redirect(`${config.authUrl}?${params.toString()}`);
+    const finalUrl = `${config.authUrl}?${params.toString()}`;
+    console.log(`[OAuth Debug] Redirecting to: ${finalUrl}`);
+    return c.redirect(finalUrl);
 });
 
 /**
