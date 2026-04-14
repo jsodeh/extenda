@@ -182,7 +182,7 @@ export default function IntegrationsPage() {
 
             {/* Compact Grid */}
             <div className="flex-1 overflow-y-auto p-4 scrollbar-hide">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-2.5">
                     {ADAPTERS.map((adapter) => {
                         const isConnected = adapter.type === 'built-in' || (adapter.provider && connectedProviders.has(adapter.provider));
                         
@@ -190,27 +190,23 @@ export default function IntegrationsPage() {
                             <button
                                 key={adapter.id}
                                 onClick={() => setSelectedAdapter(adapter)}
-                                className="flex flex-col aspect-square rounded-2xl border border-border bg-card p-3 text-left hover:border-primary/40 hover:shadow-md transition-all group relative overflow-hidden active:scale-95"
+                                className="flex flex-col aspect-square rounded-xl border border-border bg-card p-2.5 text-left hover:border-primary/40 hover:shadow-sm transition-all group relative overflow-hidden active:scale-95"
                             >
-                                <div className="mb-auto">
-                                   <div className={`w-8 h-8 rounded-xl ${isConnected ? 'bg-primary/10' : 'bg-muted'} flex items-center justify-center p-1.5 transition-colors`}>
+                                <div className="mb-auto flex items-start justify-between">
+                                   <div className={`w-7 h-7 rounded-lg ${isConnected ? 'bg-primary/10' : 'bg-muted'} flex items-center justify-center p-1.5 transition-colors`}>
                                         {adapter.icon ? (
                                             <img src={adapter.icon} alt={adapter.name} className={`w-full h-full object-contain ${isConnected ? '' : 'grayscale opacity-50'}`} />
                                         ) : (
                                             <Shield className={`w-full h-full ${isConnected ? 'text-primary' : 'text-muted-foreground'}`} />
                                         )}
                                    </div>
+                                   <div className={`w-1.5 h-1.5 rounded-full mt-1 ${isConnected ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]' : 'bg-muted-foreground/30'}`} />
                                 </div>
                                 
                                 <div>
-                                    <h4 className="text-[11px] font-bold text-foreground truncate">{adapter.name}</h4>
-                                    <div className="flex items-center gap-1 mt-0.5">
-                                        <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-muted-foreground/30'}`} />
-                                        <span className="text-[9px] text-muted-foreground font-medium">{isConnected ? 'Enabled' : 'Disabled'}</span>
-                                    </div>
+                                    <h4 className="text-[10px] font-bold text-foreground truncate pr-2 leading-tight">{adapter.name}</h4>
+                                    <p className="text-[8px] text-muted-foreground font-medium truncate mt-0.5">{adapter.actions.length} Actions</p>
                                 </div>
-
-                                <ChevronRight className="absolute bottom-3 right-3 w-3 h-3 text-muted-foreground/30 group-hover:text-primary transition-colors" />
                             </button>
                         );
                     })}

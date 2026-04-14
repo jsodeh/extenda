@@ -57,8 +57,8 @@ export const ADAPTERS: Adapter[] = [
         provider: 'google',
         icon: gmailIcon,
         actions: [
-            { id: 'get_emails', name: 'Read Emails', description: 'Fetch and summarize recent email threads.', defaultPermission: 'allowed' },
-            { id: 'send_email', name: 'Send/Draft Email', description: 'Compose and send emails on your behalf.', defaultPermission: 'approval_required' }
+            { id: 'list_emails', name: 'List Emails', description: 'Fetch and summarize recent email threads.', defaultPermission: 'allowed' },
+            { id: 'send_email', name: 'Send Email', description: 'Compose and send emails on your behalf.', defaultPermission: 'approval_required' }
         ]
     },
     {
@@ -69,8 +69,8 @@ export const ADAPTERS: Adapter[] = [
         provider: 'google',
         icon: googleIcon,
         actions: [
-            { id: 'get_calendar_events', name: 'View Schedule', description: 'Read upcoming events from your calendar.', defaultPermission: 'allowed' },
-            { id: 'create_calendar_event', name: 'Create Events', description: 'Add new meetings or events to your schedule.', defaultPermission: 'approval_required' }
+            { id: 'list_events', name: 'View Schedule', description: 'Read upcoming events from your calendar.', defaultPermission: 'allowed' },
+            { id: 'create_event', name: 'Create Events', description: 'Add new meetings or events to your schedule.', defaultPermission: 'approval_required' }
         ]
     },
     {
@@ -81,20 +81,31 @@ export const ADAPTERS: Adapter[] = [
         provider: 'google',
         icon: googleIcon,
         actions: [
-            { id: 'search_drive', name: 'Search Files', description: 'Lookup documents and files in your Drive.', defaultPermission: 'allowed' }
+            { id: 'list_files', name: 'List Files', description: 'Lookup documents and files in your Drive.', defaultPermission: 'allowed' },
+            { id: 'create_folder', name: 'Create Folder', description: 'Organize files by creating new directories.', defaultPermission: 'approval_required' }
         ]
     },
     {
-        id: 'github',
-        name: 'GitHub',
-        description: 'Code and repository automation.',
+        id: 'slack',
+        name: 'Slack',
+        description: 'Real-time communication and messaging.',
         type: 'oauth',
-        provider: 'github',
-        icon: githubIcon,
+        provider: 'slack',
         actions: [
-            { id: 'list_issues', name: 'List Issues', description: 'See open issues and pull requests.', defaultPermission: 'allowed' },
-            { id: 'create_issue', name: 'Create Issues', description: 'Open new issues in repositories.', defaultPermission: 'approval_required' },
-            { id: 'review_pr', name: 'Review PRs', description: 'Post comments or reviews on pull requests.', defaultPermission: 'approval_required' }
+            { id: 'send_message', name: 'Send Message', description: 'Post updates to channels or direct messages.', defaultPermission: 'approval_required' },
+            { id: 'get_history', name: 'Read History', description: 'Retrieve message history from conversations.', defaultPermission: 'allowed' }
+        ]
+    },
+    {
+        id: 'jira',
+        name: 'Jira',
+        description: 'Issue tracking and project management.',
+        type: 'oauth',
+        provider: 'jira',
+        actions: [
+            { id: 'search_issues', name: 'Search Issues', description: 'Find tickets using JQL or keywords.', defaultPermission: 'allowed' },
+            { id: 'create_issue', name: 'Create Issue', description: 'Create new tasks, bugs, or stories.', defaultPermission: 'approval_required' },
+            { id: 'get_issue', name: 'View Issue', description: 'Read full details of a specific ticket.', defaultPermission: 'allowed' }
         ]
     },
     {
@@ -102,11 +113,86 @@ export const ADAPTERS: Adapter[] = [
         name: 'Notion',
         description: 'Knowledge base and page management.',
         type: 'oauth',
-        provider: 'google', // Placeholder until notion-oauth is ready
+        provider: 'notion',
         icon: notionIcon,
         actions: [
-            { id: 'read_page', name: 'Read Notion Page', description: 'Import content from your Notion workspace.', defaultPermission: 'allowed' },
-            { id: 'append_content', name: 'Append to Page', description: 'Add notes or items to existing Notion pages.', defaultPermission: 'approval_required' }
+            { id: 'query_database', name: 'Query Database', description: 'Search and filter Notion databases.', defaultPermission: 'allowed' },
+            { id: 'create_page', name: 'Create Page', description: 'Create new pages or database items.', defaultPermission: 'approval_required' }
+        ]
+    },
+    {
+        id: 'hubspot',
+        name: 'HubSpot',
+        description: 'CRM and marketing automation.',
+        type: 'oauth',
+        provider: 'hubspot',
+        actions: [
+            { id: 'get_deals', name: 'View Deals', description: 'Read sales pipeline and deal information.', defaultPermission: 'allowed' },
+            { id: 'create_contact', name: 'Create Contact', description: 'Add new leads to the CRM.', defaultPermission: 'approval_required' }
+        ]
+    },
+    {
+        id: 'asana',
+        name: 'Asana',
+        description: 'Team task and project tracking.',
+        type: 'oauth',
+        provider: 'asana',
+        icon: asanaIcon,
+        actions: [
+            { id: 'get_tasks', name: 'List Tasks', description: 'View assigned tasks in projects.', defaultPermission: 'allowed' },
+            { id: 'create_task', name: 'Create Task', description: 'Add new tasks to projects.', defaultPermission: 'approval_required' }
+        ]
+    },
+    {
+        id: 'clickup',
+        name: 'ClickUp',
+        description: 'Unified project management platform.',
+        type: 'oauth',
+        provider: 'clickup',
+        actions: [
+            { id: 'get_lists', name: 'View Lists', description: 'Browse folders and lists.', defaultPermission: 'allowed' },
+            { id: 'create_task', name: 'Create Task', description: 'Create new tasks in a list.', defaultPermission: 'approval_required' }
+        ]
+    },
+    {
+        id: 'airtable',
+        name: 'Airtable',
+        description: 'Relational database and spreadsheet tool.',
+        type: 'oauth', // Assuming OAuth via token for now
+        actions: [
+            { id: 'get_records', name: 'Read Records', description: 'Retrieve rows from an Airtable base.', defaultPermission: 'allowed' },
+            { id: 'create_record', name: 'Create Record', description: 'Add new rows to a table.', defaultPermission: 'approval_required' }
+        ]
+    },
+    {
+        id: 'linkedin',
+        name: 'LinkedIn',
+        description: 'Professional networking and posting.',
+        type: 'oauth',
+        provider: 'linkedin',
+        icon: linkedinIcon,
+        actions: [
+            { id: 'get_profile', name: 'View Profile', description: 'Read your professional profile details.', defaultPermission: 'allowed' },
+            { id: 'create_post', name: 'Create Post', description: 'Share updates on your LinkedIn feed.', defaultPermission: 'approval_required' }
+        ]
+    },
+    {
+        id: 'calendly',
+        name: 'Calendly',
+        description: 'Automated scheduling and booking.',
+        type: 'oauth',
+        actions: [
+            { id: 'list_events', name: 'View Events', description: 'See upcoming scheduled meetings.', defaultPermission: 'allowed' },
+            { id: 'get_event_types', name: 'Event Types', description: 'List available booking link types.', defaultPermission: 'allowed' }
+        ]
+    },
+    {
+        id: 'hootsuite',
+        name: 'Hootsuite',
+        description: 'Social media management dashboard.',
+        type: 'oauth',
+        actions: [
+            { id: 'create_message', name: 'Compose Message', description: 'Draft and schedule social media posts.', defaultPermission: 'approval_required' }
         ]
     },
     {

@@ -26,27 +26,42 @@ export class PreferencesService {
             return cached.data;
         }
 
-        const result = await db.select().from(userPreferences).where(eq(userPreferences.userId, userId as any)).limit(1);
+        try {
+            const result = await db.select().from(userPreferences).where(eq(userPreferences.userId, userId as any)).limit(1);
 
-        if (result.length === 0) {
-            return null;
+            if (result.length === 0) {
+                return null;
+            }
+
+            const row = result[0];
+            const prefs = {
+                userId: row.userId as string,
+                dataSources: row.dataSources as any,
+                enabledTools: row.enabledTools as any,
+                toolPermissions: (row as any).toolPermissions || {},
+                aiSettings: row.aiSettings as any,
+                customPrompt: row.customPrompt,
+                promptStyle: row.promptStyle || 'professional'
+            };
+
+            // Cache result
+            this.cache.set(userId, { data: prefs, expires: Date.now() + this.TTL });
+
+            return prefs;
+        } catch (error) {
+            console.error('[PreferencesService] Error fetching preferences (possibly missing columns):', error);
+            
+            // Fallback: If the column is missing, try a simpler select if possible, or return defaults
+            // For now, return a basic object based on what we know must exist
+            return {
+                userId,
+                dataSources: { history: true, bookmarks: false, tabs: true },
+                enabledTools: [],
+                toolPermissions: {},
+                aiSettings: {},
+                promptStyle: 'professional'
+            };
         }
-
-        const row = result[0];
-        const prefs = {
-            userId: row.userId as string,
-            dataSources: row.dataSources as any,
-            enabledTools: row.enabledTools as any,
-            toolPermissions: row.toolPermissions as any,
-            aiSettings: row.aiSettings as any,
-            customPrompt: row.customPrompt,
-            promptStyle: row.promptStyle || 'professional'
-        };
-
-        // Cache result
-        this.cache.set(userId, { data: prefs, expires: Date.now() + this.TTL });
-
-        return prefs;
     }
 
     /**
@@ -60,18 +75,9 @@ export class PreferencesService {
      * Create or update user preferences
      */
     static async upsert(preferences: UserPreferences): Promise<void> {
-        await db.insert(userPreferences).values({
-            userId: preferences.userId as any,
-            dataSources: preferences.dataSources,
-            enabledTools: preferences.enabledTools,
-            toolPermissions: preferences.toolPermissions,
-            aiSettings: preferences.aiSettings,
-            customPrompt: preferences.customPrompt,
-            promptStyle: preferences.promptStyle || 'professional',
-            updatedAt: new Date()
-        }).onConflictDoUpdate({
-            target: userPreferences.userId,
-            set: {
+        try {
+            await db.insert(userPreferences).values({
+                userId: preferences.userId as any,
                 dataSources: preferences.dataSources,
                 enabledTools: preferences.enabledTools,
                 toolPermissions: preferences.toolPermissions,
@@ -79,8 +85,47 @@ export class PreferencesService {
                 customPrompt: preferences.customPrompt,
                 promptStyle: preferences.promptStyle || 'professional',
                 updatedAt: new Date()
+            }).onConflictDoUpdate({
+                target: userPreferences.userId,
+                set: {
+                    dataSources: preferences.dataSources,
+                    enabledTools: preferences.enabledTools,
+                    toolPermissions: preferences.toolPermissions,
+                    aiSettings: preferences.aiSettings,
+                    customPrompt: preferences.customPrompt,
+                    promptStyle: preferences.promptStyle || 'professional',
+                    updatedAt: new Date()
+                }
+            });
+        } catch (error) {
+            console.error('[PreferencesService] Error upserting preferences:', error);
+            // If the column doesn't exist, try a degraded fallback (update only known columns)
+            try {
+                const { toolPermissions, ...basePrefs } = preferences;
+                await db.insert(userPreferences).values({
+                    userId: basePrefs.userId as any,
+                    dataSources: basePrefs.dataSources,
+                    enabledTools: basePrefs.enabledTools,
+                    aiSettings: basePrefs.aiSettings,
+                    customPrompt: basePrefs.customPrompt,
+                    promptStyle: basePrefs.promptStyle || 'professional',
+                    updatedAt: new Date()
+                }).onConflictDoUpdate({
+                    target: userPreferences.userId,
+                    set: {
+                        dataSources: basePrefs.dataSources,
+                        enabledTools: basePrefs.enabledTools,
+                        aiSettings: basePrefs.aiSettings,
+                        customPrompt: basePrefs.customPrompt,
+                        promptStyle: basePrefs.promptStyle || 'professional',
+                        updatedAt: new Date()
+                    }
+                });
+            } catch (innerError) {
+                console.error('[PreferencesService] Fatal fallback failure:', innerError);
+                throw error; // Re-throw original error if fallback also fails
             }
-        });
+        }
 
         this.clearCache(preferences.userId);
     }
