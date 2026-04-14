@@ -54,7 +54,12 @@ export async function initiateOAuthFlow(provider: string): Promise<OAuthResult> 
 
 export async function fetchConnectedProviders(): Promise<string[]> {
     try {
-        const response = await fetch(`${API_BASE_URL}/oauth/status`);
+        const { accessToken } = await chrome.storage.local.get(['accessToken']);
+        const response = await fetch(`${API_BASE_URL}/oauth/status`, {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`
+            }
+        });
         if (!response.ok) throw new Error('Failed to fetch providers');
         const data = await response.json();
         return data.connectedProviders || [];

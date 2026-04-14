@@ -44,6 +44,7 @@ function ActionItem({ action, permission, onChange }: ActionItemProps) {
 // --- Main Page ---
 
 export default function IntegrationsPage() {
+    const [adapters, setAdapters] = useState<Adapter[]>([]);
     const [connectedProviders, setConnectedProviders] = useState<Set<string>>(new Set());
     const [toolPermissions, setToolPermissions] = useState<Record<string, PermissionLevel>>({});
     const [loading, setLoading] = useState<string | null>(null);
@@ -57,37 +58,58 @@ export default function IntegrationsPage() {
             const { accessToken } = await chrome.storage.local.get(['accessToken']);
             setAccessToken(accessToken);
             
-            await loadPreferences(accessToken);
-            await loadConnectedProviders();
+            await fetchDiscoveryStatus(accessToken);
             setLoadingSettings(false);
         };
         init();
     }, []);
 
-    const loadPreferences = async (token: string | null) => {
+    const fetchDiscoveryStatus = async (token: string | null) => {
         try {
-            // 1. Try local storage first
-            const local = await chrome.storage.local.get(['tool_permissions']);
-            if (local.tool_permissions) {
-                setToolPermissions(local.tool_permissions);
-            }
+            if (!token) return;
+            const API_URL = await getApiUrl();
+            const response = await fetch(`${API_URL}/api/discovery/status`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
 
-            // 2. Fetch from cloud
-            if (token) {
-                const API_URL = await getApiUrl();
-                const response = await fetch(`${API_URL}/api/preferences`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
+            if (response.ok) {
+                const manifest = await response.json();
+                
+                // Map the dynamic manifest to the UI Adapter format
+                const mappedAdapters: Adapter[] = manifest.adapters.map((a: any) => {
+                    // Find static metadata for icons/providers
+                    const staticMeta = ADAPTERS.find(s => s.id === a.id);
+                    return {
+                        ...a,
+                        type: staticMeta?.type || 'oauth',
+                        provider: staticMeta?.provider,
+                        icon: staticMeta?.icon,
+                        // isConnected comes directly from the API now!
+                    };
                 });
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.toolPermissions) {
-                        setToolPermissions(data.toolPermissions);
-                        chrome.storage.local.set({ tool_permissions: data.toolPermissions });
-                    }
-                }
+
+                setAdapters(mappedAdapters);
+
+                // Flatten permissions for the local state
+                const perms: Record<string, PermissionLevel> = {};
+                mappedAdapters.forEach(a => {
+                    a.actions.forEach(act => {
+                        perms[act.id] = act.permission as PermissionLevel;
+                    });
+                });
+                setToolPermissions(perms);
+                
+                // Track connected providers for OAuth UI logic
+                const providers = new Set<string>();
+                mappedAdapters.forEach(a => {
+                    if (a.isConnected && a.provider) providers.add(a.provider);
+                });
+                setConnectedProviders(providers);
             }
         } catch (err) {
-            console.error('Failed to load preferences:', err);
+            console.error('Failed to fetch discovery status:', err);
+            // Fallback to static ADAPTERS if API fails
+            setAdapters(ADAPTERS);
         }
     };
 
@@ -124,18 +146,16 @@ export default function IntegrationsPage() {
     const handleSyncReset = async () => {
         if (!confirm('Revert all tool permissions to defaults?')) return;
         const defaults: Record<string, PermissionLevel> = {};
-        ADAPTERS.forEach(a => a.actions.forEach(act => defaults[act.id] = act.defaultPermission));
+        adapters.forEach(a => a.actions.forEach(act => defaults[act.id] = (act as any).defaultPermission || 'allowed'));
         setToolPermissions(defaults);
         await chrome.storage.local.set({ tool_permissions: defaults });
-        // Backend sync...
     };
 
     const handleConnect = async (providerId: string) => {
         setLoading(providerId);
         const result = await initiateOAuthFlow(providerId);
         if (result.success) {
-            setConnectedProviders(prev => new Set([...prev, providerId]));
-            await loadConnectedProviders();
+            await fetchDiscoveryStatus(accessToken);
         } else {
             alert(`Connect failed: ${result.error}`);
         }
@@ -147,11 +167,7 @@ export default function IntegrationsPage() {
         setLoading(providerId);
         const success = await disconnectProvider(providerId);
         if (success) {
-            setConnectedProviders(prev => {
-                const n = new Set(prev);
-                n.delete(providerId);
-                return n;
-            });
+            await fetchDiscoveryStatus(accessToken);
         }
         setLoading(null);
     };
@@ -183,8 +199,8 @@ export default function IntegrationsPage() {
             {/* Compact Grid */}
             <div className="flex-1 overflow-y-auto p-4 scrollbar-hide">
                 <div className="grid grid-cols-2 gap-2.5">
-                    {ADAPTERS.map((adapter) => {
-                        const isConnected = adapter.type === 'built-in' || (adapter.provider && connectedProviders.has(adapter.provider));
+                    {adapters.map((adapter) => {
+                        const isConnected = adapter.isConnected;
                         
                         return (
                             <button

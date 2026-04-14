@@ -232,7 +232,20 @@ export class OAuthManager {
             WHERE user_id = $1
         `, [userId]);
 
-        return result.rows.map((row: any) => row.provider);
+        const providers = result.rows.map((row: any) => row.provider);
+
+        // Check if user has googleAccessToken in users table (from signup)
+        const userResult = await query(`
+            SELECT google_access_token FROM users WHERE id = $1
+        `, [userId]);
+
+        if (userResult.rows.length > 0 && userResult.rows[0].google_access_token) {
+            if (!providers.includes('google')) {
+                providers.push('google');
+            }
+        }
+
+        return providers;
     }
 
     /**

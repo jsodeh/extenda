@@ -12,6 +12,7 @@ export interface ToolAction {
     name: string; // Visual name (e.g. 'Smart Click')
     description: string;
     defaultPermission: PermissionLevel;
+    permission?: PermissionLevel; // Added for dynamic manifest support
 }
 
 export interface Adapter {
@@ -22,6 +23,7 @@ export interface Adapter {
     type: 'built-in' | 'oauth';
     provider?: string; // e.g. 'google' for OAuth
     actions: ToolAction[];
+    isConnected?: boolean; // Added for dynamic manifest support
 }
 
 export const ADAPTERS: Adapter[] = [

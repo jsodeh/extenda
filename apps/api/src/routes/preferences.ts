@@ -94,4 +94,21 @@ preferences.patch('/', async (c) => {
     }
 });
 
+/**
+ * GET /api/discovery/status
+ * Get a unified manifest of adapters, connectivity, and permissions
+ */
+preferences.get('/status', async (c) => {
+    try {
+        const dbUser = c.get('user');
+        const manifest = await import('../services/discovery-service.js').then(m => 
+            m.DiscoveryService.getStatusManifest(dbUser.id)
+        );
+        return c.json(manifest);
+    } catch (error) {
+        console.error('Error fetching discovery status:', error);
+        return c.json({ error: 'Failed to fetch discovery status' }, 500);
+    }
+});
+
 export default preferences;
