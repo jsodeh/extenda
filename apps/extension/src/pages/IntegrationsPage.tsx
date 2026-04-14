@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { initiateOAuthFlow, fetchConnectedProviders, disconnectProvider } from '../lib/oauth';
-import { Check, X, Loader, Shield, Lock, Eye, AlertTriangle, Settings, ChevronRight } from 'lucide-react';
+import { Check, X, Loader, Shield, Lock, Eye, AlertTriangle, Settings, ChevronRight, RotateCcw } from 'lucide-react';
 import { ADAPTERS, Adapter, ToolAction, PermissionLevel } from '../lib/tools/adapters';
 import { getApiUrl } from '../lib/api';
 
@@ -66,9 +66,12 @@ export default function IntegrationsPage() {
 
     const fetchDiscoveryStatus = async (token: string | null) => {
         try {
-            if (!token) return;
+            if (!token) {
+                setAdapters(ADAPTERS);
+                return;
+            }
             const API_URL = await getApiUrl();
-            const response = await fetch(`${API_URL}/api/discovery/status`, {
+            const response = await fetch(`${API_URL}/api/preferences/status`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
 
@@ -76,7 +79,7 @@ export default function IntegrationsPage() {
                 const manifest = await response.json();
                 
                 // Map the dynamic manifest to the UI Adapter format
-                const mappedAdapters: Adapter[] = manifest.adapters.map((a: any) => {
+                const mappedAdapters: Adapter[] = (manifest.adapters || []).map((a: any) => {
                     // Find static metadata for icons/providers
                     const staticMeta = ADAPTERS.find(s => s.id === a.id);
                     return {
@@ -84,31 +87,34 @@ export default function IntegrationsPage() {
                         type: staticMeta?.type || 'oauth',
                         provider: staticMeta?.provider,
                         icon: staticMeta?.icon,
-                        // isConnected comes directly from the API now!
                     };
                 });
 
-                setAdapters(mappedAdapters);
+                if (mappedAdapters.length > 0) {
+                    setAdapters(mappedAdapters);
 
-                // Flatten permissions for the local state
-                const perms: Record<string, PermissionLevel> = {};
-                mappedAdapters.forEach(a => {
-                    a.actions.forEach(act => {
-                        perms[act.id] = act.permission as PermissionLevel;
+                    const perms: Record<string, PermissionLevel> = {};
+                    mappedAdapters.forEach(a => {
+                        a.actions.forEach(act => {
+                            perms[act.id] = act.permission as PermissionLevel;
+                        });
                     });
-                });
-                setToolPermissions(perms);
-                
-                // Track connected providers for OAuth UI logic
-                const providers = new Set<string>();
-                mappedAdapters.forEach(a => {
-                    if (a.isConnected && a.provider) providers.add(a.provider);
-                });
-                setConnectedProviders(providers);
+                    setToolPermissions(perms);
+                    
+                    const providers = new Set<string>();
+                    mappedAdapters.forEach(a => {
+                        if (a.isConnected && a.provider) providers.add(a.provider);
+                    });
+                    setConnectedProviders(providers);
+                } else {
+                    setAdapters(ADAPTERS);
+                }
+            } else {
+                console.warn('Discovery API returned error, falling back to static list');
+                setAdapters(ADAPTERS);
             }
         } catch (err) {
             console.error('Failed to fetch discovery status:', err);
-            // Fallback to static ADAPTERS if API fails
             setAdapters(ADAPTERS);
         }
     };
@@ -190,9 +196,11 @@ export default function IntegrationsPage() {
                 </div>
                 <button 
                    onClick={handleSyncReset}
-                   className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground transition-colors"
+                   className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-muted text-[10px] font-bold text-muted-foreground transition-all active:scale-95 border border-border/40"
+                   title="Reset all permissions to defaults"
                 >
-                    <Settings className="w-3.5 h-3.5" />
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Reset Defaults</span>
                 </button>
             </div>
 
