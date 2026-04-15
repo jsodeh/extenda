@@ -241,13 +241,20 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
 
     const handleSave = async () => {
         if (typeof chrome !== 'undefined' && chrome.storage) {
+            // Always save model/provider settings (these should NOT trigger a reload)
             await chrome.storage.local.set({ 
                 extenda_provider_keys: providerKeys,
                 extenda_active_provider: selectedProvider,
                 extenda_default_models: defaultModels,
-                extenda_ollama_url: ollamaUrl,
-                extenda_backend_url: backendUrl
+                extenda_ollama_url: ollamaUrl
             });
+
+            // Only write backend URL if it actually changed, to avoid
+            // triggering the storage listener in App.tsx which does a full reload
+            const current = await chrome.storage.local.get(['extenda_backend_url']);
+            if (current.extenda_backend_url !== backendUrl) {
+                await chrome.storage.local.set({ extenda_backend_url: backendUrl });
+            }
         }
 
         const token = localStorage.getItem('accessToken');

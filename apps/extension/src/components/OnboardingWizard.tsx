@@ -30,7 +30,7 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
     };
 
     const handleNext = async () => {
-        if (step < 4) {
+        if (step < 3) {
             setStep(step + 1);
         } else {
             try {
@@ -67,7 +67,7 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                 <div className="h-1 bg-muted">
                     <div
                         className="h-full bg-primary transition-all duration-500 ease-out"
-                        style={{ width: `${(step / 4) * 100}%` }}
+                        style={{ width: `${(step / 3) * 100}%` }}
                     />
                 </div>
 
@@ -148,38 +148,17 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                         </div>
                     )}
 
-                    {/* Step 4: Done */}
-                    {step === 4 && (
-                        <div className="text-center">
-                            <div className="inline-flex items-center justify-center mb-6">
-                                <img src={iconDark} alt="Extenda" className="h-12 w-12 dark:hidden drop-shadow-sm" />
-                                <img src={iconLight} alt="Extenda" className="h-12 w-12 hidden dark:block drop-shadow-sm" />
-                            </div>
-                            <h2 className="text-lg font-bold text-foreground mb-1">Ready to go!</h2>
-                            <p className="text-xs text-muted-foreground mb-4 leading-relaxed">Try your first command:</p>
-                            <div className="bg-muted/40 rounded-xl p-4 border border-border text-left space-y-2.5">
-                                {[
-                                    '"Summarize my last 5 emails"',
-                                    '"Check my calendar for tomorrow"',
-                                    '"What is on this page?"'
-                                ].map((cmd) => (
-                                    <p key={cmd} className="text-[10px] font-medium text-foreground/80 flex items-start gap-2 leading-tight">
-                                        <Zap className="h-3 w-3 text-primary shrink-0 mt-0.5" /> {cmd}
-                                    </p>
-                                ))}
-                            </div>
-                        </div>
-                    )}
+
 
                     {/* Navigation */}
                     <div className="flex justify-between items-center mt-6">
-                        <span className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">Step {step} / 4</span>
+                        <span className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">Step {step} / 3</span>
                         <button
                             onClick={handleNext}
                             disabled={step !== 1 && !canProceed()}
                             className="flex items-center gap-1.5 px-6 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-black shadow-lg shadow-primary/20 hover:opacity-90 disabled:opacity-40 disabled:scale-100 transition-all active:scale-95 uppercase tracking-tighter"
                         >
-                            {step === 4 ? 'Get Started' : 'Next'}
+                            {step === 3 ? 'Get Started' : 'Next'}
                             <ChevronRight className="h-3.5 w-3.5" />
                         </button>
                     </div>
