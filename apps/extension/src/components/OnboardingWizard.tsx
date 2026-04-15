@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronRight, CheckCircle, Rocket, Target, Zap, Settings, CheckCircle2 } from 'lucide-react';
+import { ChevronRight, CheckCircle, Rocket, Target, Zap, Settings, CheckCircle2, Shield } from 'lucide-react';
 import iconLight from '../assets/icon-light.png';
 import iconDark from '../assets/icon-dark.png';
 
@@ -22,7 +22,6 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
     const [step, setStep] = useState(1);
     const [businessType, setBusinessType] = useState('');
     const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
-    const [connected, setConnected] = useState(false);
 
     const handleGoalToggle = (goalId: string) => {
         setSelectedGoals(prev =>
@@ -31,7 +30,7 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
     };
 
     const handleNext = async () => {
-        if (step < 5) {
+        if (step < 4) {
             setStep(step + 1);
         } else {
             try {
@@ -59,10 +58,8 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
     const canProceed = () => {
         if (step === 2 && !businessType) return false;
         if (step === 3 && selectedGoals.length === 0) return false;
-        if (step === 4 && !connected) return false;
-        return true;
+        return true; 
     };
-
     return (
         <div className="fixed inset-0 bg-background/80 backdrop-blur-md flex items-center justify-center z-50 animate-in fade-in duration-300">
             <div className="bg-card rounded-2xl shadow-2xl w-full max-w-xs mx-3 overflow-hidden border border-border animate-in zoom-in-95 duration-200">
@@ -70,7 +67,7 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                 <div className="h-1 bg-muted">
                     <div
                         className="h-full bg-primary transition-all duration-500 ease-out"
-                        style={{ width: `${(step / 5) * 100}%` }}
+                        style={{ width: `${(step / 4) * 100}%` }}
                     />
                 </div>
 
@@ -151,45 +148,8 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                         </div>
                     )}
 
-                    {/* Step 4: Connect */}
+                    {/* Step 4: Done */}
                     {step === 4 && (
-                        <div>
-                            <h2 className="text-lg font-bold text-foreground mb-1">Connect Tools</h2>
-                            <p className="text-xs text-muted-foreground mb-4 leading-relaxed">Start with an integration.</p>
-                            <div className="bg-muted/30 rounded-xl p-4 border border-border">
-                                <div className="flex items-center gap-4">
-                                    <span className="text-3xl shrink-0">📧</span>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-bold text-foreground truncate">Google Workspace</p>
-                                        <p className="text-[10px] text-muted-foreground truncate">Gmail, Calendar, Drive</p>
-                                    </div>
-                                    {connected ? (
-                                        <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
-                                    ) : (
-                                        <button
-                                            onClick={() => setConnected(true)}
-                                            className="px-4 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-bold hover:opacity-90 active:scale-95 transition-all shrink-0 shadow-lg shadow-primary/20"
-                                        >
-                                            Connect
-                                        </button>
-                                    )}
-                                </div>
-                                {connected && (
-                                    <div className="mt-3 p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg animate-in fade-in slide-in-from-top-1">
-                                        <p className="text-[10px] text-emerald-600 font-bold flex items-center justify-center gap-1.5">
-                                            <CheckCircle2 className="h-3 w-3" /> Successfully Connected!
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-                            <p className="text-[10px] text-muted-foreground text-center mt-4">
-                                More available in Settings
-                            </p>
-                        </div>
-                    )}
-
-                    {/* Step 5: Done */}
-                    {step === 5 && (
                         <div className="text-center">
                             <div className="inline-flex items-center justify-center mb-6">
                                 <img src={iconDark} alt="Extenda" className="h-12 w-12 dark:hidden drop-shadow-sm" />
@@ -213,13 +173,13 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
 
                     {/* Navigation */}
                     <div className="flex justify-between items-center mt-6">
-                        <span className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">Step {step} / 5</span>
+                        <span className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">Step {step} / 4</span>
                         <button
                             onClick={handleNext}
                             disabled={step !== 1 && !canProceed()}
                             className="flex items-center gap-1.5 px-6 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-black shadow-lg shadow-primary/20 hover:opacity-90 disabled:opacity-40 disabled:scale-100 transition-all active:scale-95 uppercase tracking-tighter"
                         >
-                            {step === 5 ? 'Get Started' : 'Next'}
+                            {step === 4 ? 'Get Started' : 'Next'}
                             <ChevronRight className="h-3.5 w-3.5" />
                         </button>
                     </div>
