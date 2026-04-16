@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { MessageSquare, Clock, ArrowRight, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../contexts/auth-context';
+import { getApiUrl } from '../lib/api';
 
 interface ChatSession {
     id: string;
@@ -31,7 +32,8 @@ export default function HistoryPage({ onSelectSession, onBack }: HistoryPageProp
                 setLoading(false);
                 return;
             }
-            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+            
+            const API_URL = await getApiUrl();
 
             const response = await fetch(`${API_URL}/api/chat/sessions`, {
                 headers: {
