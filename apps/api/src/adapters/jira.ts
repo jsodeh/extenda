@@ -4,6 +4,7 @@ import { AdapterAction } from '@extenda/shared';
 
 const ACTIONS: AdapterAction[] = [
     {
+        id: 'create_issue',
         name: 'create_issue',
         description: 'Create a new Jira issue',
         parameters: {
@@ -18,6 +19,7 @@ const ACTIONS: AdapterAction[] = [
         }
     },
     {
+        id: 'get_issue',
         name: 'get_issue',
         description: 'Get details of a Jira issue',
         parameters: {
@@ -29,6 +31,7 @@ const ACTIONS: AdapterAction[] = [
         }
     },
     {
+        id: 'search_issues',
         name: 'search_issues',
         description: 'Search for issues using JQL',
         parameters: {
@@ -43,6 +46,9 @@ const ACTIONS: AdapterAction[] = [
 ];
 
 export class JiraAdapter extends BaseAdapter {
+    id = 'jira';
+    type = 'oauth' as const;
+    provider = 'jira';
     name = 'JiraAdapter';
     description = 'Manage Jira issues';
     version = '1.0.0';

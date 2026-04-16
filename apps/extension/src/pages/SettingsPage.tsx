@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, ChevronRight, Save, Key, CheckCircle2, Eye, EyeOff, Globe } from 'lucide-react';
+import { useAuth } from '../contexts/auth-context';
+import { ArrowLeft, ChevronRight, Save, Key, CheckCircle2, Eye, EyeOff, Globe, User, LogOut } from 'lucide-react';
 import IntegrationsPage from './IntegrationsPage';
+import ProfilePage from './ProfilePage';
 
 interface SettingsSection {
     id: string;
@@ -181,6 +183,7 @@ interface SettingsPageProps {
 }
 
 export default function SettingsPage({ onBack }: SettingsPageProps) {
+    const { user } = useAuth();
     const [activeSection, setActiveSection] = useState('root');
     const [providerKeys, setProviderKeys] = useState<KeyStorage>({ google: '', openai: '', anthropic: '', ollama: '' });
     const [defaultModels, setDefaultModels] = useState<DefaultModels>({ 
@@ -314,20 +317,55 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
             {/* Content */}
             <div className="flex-1 overflow-y-auto">
                 {activeSection === 'root' ? (
-                    <div className="p-4 space-y-2">
-                        {SECTIONS.map((section) => (
-                            <button
-                                key={section.id}
-                                onClick={() => setActiveSection(section.id)}
-                                className="w-full flex items-center justify-between p-4 bg-card rounded-xl border border-border hover:border-primary/30 hover:shadow-md transition-all group"
-                            >
-                                <span className="font-medium text-sm text-foreground">{section.label}</span>
-                                <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
-                            </button>
-                        ))}
+                    <div className="p-4 space-y-4">
+                        {/* Profile Widget */}
+                        <button
+                            onClick={() => setActiveSection('profile')}
+                            className="w-full flex items-center justify-between p-5 rounded-3xl bg-primary text-primary-foreground shadow-xl shadow-primary/20 hover:shadow-2xl hover:shadow-primary/30 active:scale-[0.98] transition-all group"
+                        >
+                            <div className="flex flex-col items-start gap-1">
+                                <span className="text-[10px] uppercase font-bold tracking-[0.2em] opacity-80">Connected as</span>
+                                <h3 className="text-sm font-bold truncate max-w-[140px]">
+                                    {user?.name || (user?.firstName ? `${user.firstName} ${user.lastName || ''}` : (user?.email?.split('@')[0] || 'Extenda User'))}
+                                </h3>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                    <span className="text-[10px] font-medium opacity-80">Active Session</span>
+                                </div>
+                            </div>
+                            <div className="relative">
+                                <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-md border border-white/20 overflow-hidden shadow-inner group-hover:scale-105 transition-transform">
+                                    {user?.imageUrl ? (
+                                        <img src={user.imageUrl} alt="Profile" className="w-full h-full object-cover" />
+                                    ) : (
+                                        <User className="w-6 h-6 text-primary-foreground" />
+                                    )}
+                                </div>
+                                <div className="absolute -bottom-1 -right-1 p-1 bg-white rounded-full shadow-lg">
+                                    <ChevronRight className="w-3 h-3 text-primary stroke-[3]" />
+                                </div>
+                            </div>
+                        </button>
+
+                        <div className="space-y-2 pt-2">
+                            {SECTIONS.map((section) => (
+                                <button
+                                    key={section.id}
+                                    onClick={() => setActiveSection(section.id)}
+                                    className="w-full flex items-center justify-between p-4 bg-card rounded-2xl border border-border hover:border-primary/30 hover:shadow-md transition-all group"
+                                >
+                                    <span className="font-medium text-sm text-foreground">{section.label}</span>
+                                    <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 ) : (
                     <div className="flex flex-col min-h-full">
+                        {activeSection === 'profile' && (
+                            <ProfilePage onBack={() => setActiveSection('root')} />
+                        )}
+
                         {activeSection === 'integrations' && (
                             <div className="flex-1 overflow-hidden">
                                 <IntegrationsPage />

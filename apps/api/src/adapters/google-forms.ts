@@ -4,6 +4,7 @@ import { AdapterAction } from '@extenda/shared';
 
 const ACTIONS: AdapterAction[] = [
     {
+        id: 'create_form',
         name: 'create_form',
         description: 'Create a new Google Form. Returns: formId, id, formUrl, url, editUrl. Use formUrl or url to share the form with respondents.',
         parameters: {
@@ -17,6 +18,7 @@ const ACTIONS: AdapterAction[] = [
         }
     },
     {
+        id: 'add_questions',
         name: 'add_questions',
         description: 'Add questions to a Google Form. Returns: success, questionsAdded. Note: This does NOT return the form URL - use create_form output for the URL.',
         parameters: {
@@ -50,6 +52,7 @@ const ACTIONS: AdapterAction[] = [
         }
     },
     {
+        id: 'get_responses',
         name: 'get_responses',
         description: 'Get form responses',
         parameters: {
@@ -63,6 +66,9 @@ const ACTIONS: AdapterAction[] = [
 ];
 
 export class GoogleFormsAdapter extends BaseAdapter {
+    id = 'google_forms';
+    type = 'oauth' as const;
+    provider = 'google';
     name = 'GoogleFormsAdapter';
     description = 'Create and manage Google Forms';
     version = '1.0.0';

@@ -4,6 +4,7 @@ import { AdapterAction } from '@extenda/shared';
 
 const ACTIONS: AdapterAction[] = [
     {
+        id: 'create_post',
         name: 'create_post',
         description: 'Create a social media post via Buffer',
         parameters: {
@@ -19,6 +20,9 @@ const ACTIONS: AdapterAction[] = [
 ];
 
 export class BufferAdapter extends BaseAdapter {
+    id = 'buffer';
+    type = 'oauth' as const;
+    provider = 'buffer';
     name = 'BufferAdapter';
     description = 'Manage social media posts via Buffer';
     version = '1.0.0';

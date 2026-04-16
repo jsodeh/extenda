@@ -4,6 +4,7 @@ import { AdapterAction } from '@extenda/shared';
 
 const ACTIONS: AdapterAction[] = [
     {
+        id: 'create_post',
         name: 'create_post',
         description: 'Create a post on LinkedIn',
         parameters: {
@@ -21,6 +22,7 @@ const ACTIONS: AdapterAction[] = [
         }
     },
     {
+        id: 'get_profile',
         name: 'get_profile',
         description: 'Get user LinkedIn profile information',
         parameters: {
@@ -31,6 +33,9 @@ const ACTIONS: AdapterAction[] = [
 ];
 
 export class LinkedInAdapter extends BaseAdapter {
+    id = 'linkedin';
+    type = 'oauth' as const;
+    provider = 'linkedin';
     name = 'LinkedInAdapter';
     description = 'Post content and manage LinkedIn profile';
     version = '1.0.0';

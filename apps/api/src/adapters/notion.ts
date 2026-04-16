@@ -5,6 +5,7 @@ import { AdapterAction } from '@extenda/shared';
 
 const ACTIONS: AdapterAction[] = [
     {
+        id: 'create_page',
         name: 'create_page',
         description: 'Create a new page in Notion',
         parameters: {
@@ -17,6 +18,7 @@ const ACTIONS: AdapterAction[] = [
         }
     },
     {
+        id: 'query_database',
         name: 'query_database',
         description: 'Query a Notion database',
         parameters: {
@@ -31,6 +33,9 @@ const ACTIONS: AdapterAction[] = [
 ];
 
 export class NotionAdapter extends BaseAdapter {
+    id = 'notion';
+    type = 'oauth' as const;
+    provider = 'notion';
     name = 'NotionAdapter';
     description = 'Manage Notion pages and databases';
     version = '1.0.0';

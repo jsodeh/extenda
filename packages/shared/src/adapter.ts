@@ -1,12 +1,16 @@
 import { ToolDefinition } from './types';
 
 export interface AdapterAction {
+    id: string;          // Unique action identifier for tracking
     name: string;
     description: string;
     parameters: any; // JSON Schema
 }
 
 export interface Adapter {
+    id: string;                        // Unique adapter identifier (e.g. 'gmail', 'google_drive')
+    type: 'oauth' | 'built-in';       // Authentication type
+    provider?: string;                 // OAuth provider key (e.g. 'google', 'slack')
     name: string;
     description: string;
     version: string;

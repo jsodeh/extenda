@@ -5,6 +5,7 @@ import { AdapterAction } from '@extenda/shared';
 // Define actions
 const ACTIONS: AdapterAction[] = [
     {
+        id: 'list_emails',
         name: 'list_emails',
         description: 'List emails from Gmail inbox',
         parameters: {
@@ -16,6 +17,7 @@ const ACTIONS: AdapterAction[] = [
         }
     },
     {
+        id: 'send_email',
         name: 'send_email',
         description: 'Send an email',
         parameters: {
@@ -31,6 +33,9 @@ const ACTIONS: AdapterAction[] = [
 ];
 
 export class GmailAdapter extends BaseAdapter {
+    id = 'gmail';
+    type = 'oauth' as const;
+    provider = 'google';
     name = 'GmailAdapter';
     description = 'Manage Gmail emails';
     version = '1.0.0';

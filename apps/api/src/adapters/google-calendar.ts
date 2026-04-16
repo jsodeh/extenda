@@ -4,6 +4,7 @@ import { AdapterAction } from '@extenda/shared';
 
 const ACTIONS: AdapterAction[] = [
     {
+        id: 'create_event',
         name: 'create_event',
         description: 'Create a calendar event',
         parameters: {
@@ -19,6 +20,7 @@ const ACTIONS: AdapterAction[] = [
         }
     },
     {
+        id: 'list_events',
         name: 'list_events',
         description: 'List upcoming calendar events',
         parameters: {
@@ -32,6 +34,9 @@ const ACTIONS: AdapterAction[] = [
 ];
 
 export class GoogleCalendarAdapter extends BaseAdapter {
+    id = 'google_calendar';
+    type = 'oauth' as const;
+    provider = 'google';
     name = 'GoogleCalendarAdapter';
     description = 'Manage Google Calendar events';
     version = '1.0.0';

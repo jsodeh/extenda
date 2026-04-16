@@ -10,6 +10,8 @@ export interface DiscoveryManifest {
         description: string;
         version: string;
         isConnected: boolean;
+        type: 'built-in' | 'oauth';
+        provider?: string;
         actions: Array<{
             id: string;
             name: string;
@@ -35,7 +37,9 @@ export class DiscoveryService {
         const toolPermissions = prefs?.toolPermissions || {};
 
         const adapters = adapterRegistry.getAll().map(adapter => {
-            const id = adapter.name.toLowerCase().replace('adapter', '');
+            const id = (adapter as any).id || adapter.name.toLowerCase().replace('adapter', '');
+            const type = (adapter as any).type || 'oauth';
+            const provider = (adapter as any).provider || id;
             
             // Map actions and inject current permission level
             const actions = (adapter.actions || []).map(action => ({
@@ -46,22 +50,15 @@ export class DiscoveryService {
             }));
 
             // Determine connectivity
-            // We need a subtle mapping: Gmail/Calendar/Drive use 'google' provider
-            const providerMap: Record<string, string> = {
-                'gmail': 'google',
-                'google-drive': 'google',
-                'google-calendar': 'google',
-                'google-forms': 'google'
-            };
-            
-            const providerId = providerMap[id] || id;
-            const isConnected = (adapter as any).type === 'built-in' || connectedProviders.includes(providerId);
+            const isConnected = type === 'built-in' || connectedProviders.includes(provider);
 
             return {
                 id,
                 name: adapter.name,
                 description: adapter.description,
                 version: (adapter as any).version || '1.0.0',
+                type,
+                provider,
                 isConnected,
                 actions
             };

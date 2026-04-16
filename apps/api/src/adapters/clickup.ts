@@ -4,6 +4,7 @@ import { AdapterAction } from '@extenda/shared';
 
 const ACTIONS: AdapterAction[] = [
     {
+        id: 'create_task',
         name: 'create_task',
         description: 'Create a new task in ClickUp',
         parameters: {
@@ -17,6 +18,7 @@ const ACTIONS: AdapterAction[] = [
         }
     },
     {
+        id: 'get_lists',
         name: 'get_lists',
         description: 'Get lists in a folder',
         parameters: {
@@ -30,6 +32,9 @@ const ACTIONS: AdapterAction[] = [
 ];
 
 export class ClickUpAdapter extends BaseAdapter {
+    id = 'clickup';
+    type = 'oauth' as const;
+    provider = 'clickup';
     name = 'ClickUpAdapter';
     description = 'Manage ClickUp tasks';
     version = '1.0.0';

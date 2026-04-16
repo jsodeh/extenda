@@ -6,6 +6,21 @@ import { getApiUrl } from '../lib/api';
 import IntegrationProgressOverlay, { IntegrationAction } from '../components/IntegrationProgressOverlay';
 import { showToast } from '../components/Toast';
 
+import googleIcon from '../assets/google.png';
+import githubIcon from '../assets/github.png';
+import asanaIcon from '../assets/asana.png';
+import notionIcon from '../assets/notion.png';
+import gmailIcon from '../assets/gmail.png';
+import linkedinIcon from '../assets/linkedin.png';
+
+const PROVIDER_ICONS: Record<string, string> = {
+    google: googleIcon,
+    github: githubIcon,
+    asana: asanaIcon,
+    notion: notionIcon,
+    linkedin: linkedinIcon,
+    gmail: gmailIcon
+};
 // --- Components ---
 
 interface ActionItemProps {
@@ -84,15 +99,18 @@ export default function IntegrationsPage() {
             if (response.ok) {
                 const manifest = await response.json();
                 
-                // Map the dynamic manifest to the UI Adapter format
+                // Map the dynamic manifest to the UI Adapter format directly from backend truth
                 const mappedAdapters: Adapter[] = (manifest.adapters || []).map((a: any) => {
-                    // Find static metadata for icons/providers
                     const staticMeta = ADAPTERS.find(s => s.id === a.id);
+                    
+                    // Prioritize frontend specific icons, then fallback to generic provider icons mapping.
+                    const dynamicIcon = staticMeta?.icon || (a.provider ? PROVIDER_ICONS[a.provider] : undefined);
+
                     return {
                         ...a,
-                        type: staticMeta?.type || 'oauth',
-                        provider: staticMeta?.provider,
-                        icon: staticMeta?.icon,
+                        type: a.type || staticMeta?.type || 'oauth',
+                        provider: a.provider || staticMeta?.provider,
+                        icon: dynamicIcon,
                     };
                 });
 

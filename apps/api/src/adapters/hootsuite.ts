@@ -4,6 +4,7 @@ import { AdapterAction } from '@extenda/shared';
 
 const ACTIONS: AdapterAction[] = [
     {
+        id: 'create_message',
         name: 'create_message',
         description: 'Create a social media message via Hootsuite',
         parameters: {
@@ -19,6 +20,9 @@ const ACTIONS: AdapterAction[] = [
 ];
 
 export class HootsuiteAdapter extends BaseAdapter {
+    id = 'hootsuite';
+    type = 'oauth' as const;
+    provider = 'hootsuite';
     name = 'HootsuiteAdapter';
     description = 'Manage social media via Hootsuite';
     version = '1.0.0';

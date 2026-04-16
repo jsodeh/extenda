@@ -4,6 +4,7 @@ import { AdapterAction } from '@extenda/shared';
 
 const ACTIONS: AdapterAction[] = [
     {
+        id: 'create_contact',
         name: 'create_contact',
         description: 'Create a contact in HubSpot',
         parameters: {
@@ -15,6 +16,7 @@ const ACTIONS: AdapterAction[] = [
         }
     },
     {
+        id: 'get_deals',
         name: 'get_deals',
         description: 'Get deals from HubSpot',
         parameters: {
@@ -27,6 +29,9 @@ const ACTIONS: AdapterAction[] = [
 ];
 
 export class HubSpotAdapter extends BaseAdapter {
+    id = 'hubspot';
+    type = 'oauth' as const;
+    provider = 'hubspot';
     name = 'HubSpotAdapter';
     description = 'Manage HubSpot CRM';
     version = '1.0.0';

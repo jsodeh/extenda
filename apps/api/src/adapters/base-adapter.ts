@@ -1,6 +1,9 @@
 import { Adapter, AdapterAction, ToolDefinition } from '@extenda/shared';
 
 export abstract class BaseAdapter implements Adapter {
+    abstract id: string;
+    abstract type: 'built-in' | 'oauth';
+    provider?: string;
     abstract name: string;
     abstract description: string;
     abstract version: string;

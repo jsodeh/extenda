@@ -4,6 +4,7 @@ import { AdapterAction } from '@extenda/shared';
 
 const ACTIONS: AdapterAction[] = [
     {
+        id: 'create_record',
         name: 'create_record',
         description: 'Create a record in an Airtable table',
         parameters: {
@@ -17,6 +18,7 @@ const ACTIONS: AdapterAction[] = [
         }
     },
     {
+        id: 'get_records',
         name: 'get_records',
         description: 'Get records from an Airtable table',
         parameters: {
@@ -32,6 +34,9 @@ const ACTIONS: AdapterAction[] = [
 ];
 
 export class AirtableAdapter extends BaseAdapter {
+    id = 'airtable';
+    type = 'oauth' as const;
+    provider = 'airtable';
     name = 'AirtableAdapter';
     description = 'Manage Airtable records';
     version = '1.0.0';

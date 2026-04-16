@@ -7,6 +7,12 @@ interface User {
   email: string;
   name: string;
   role: string;
+  firstName?: string;
+  lastName?: string;
+  imageUrl?: string;
+  primaryEmailAddress?: {
+    emailAddress: string;
+  };
 }
 
 interface AuthContextType {

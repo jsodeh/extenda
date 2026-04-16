@@ -4,6 +4,7 @@ import { AdapterAction } from '@extenda/shared';
 
 const ACTIONS: AdapterAction[] = [
     {
+        id: 'get_event_types',
         name: 'get_event_types',
         description: 'Get available event types',
         parameters: {
@@ -14,6 +15,7 @@ const ACTIONS: AdapterAction[] = [
         }
     },
     {
+        id: 'list_events',
         name: 'list_events',
         description: 'List scheduled events',
         parameters: {
@@ -27,6 +29,9 @@ const ACTIONS: AdapterAction[] = [
 ];
 
 export class CalendlyAdapter extends BaseAdapter {
+    id = 'calendly';
+    type = 'oauth' as const;
+    provider = 'calendly';
     name = 'CalendlyAdapter';
     description = 'Manage Calendly scheduling';
     version = '1.0.0';

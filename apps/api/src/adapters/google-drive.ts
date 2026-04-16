@@ -4,6 +4,7 @@ import { AdapterAction } from '@extenda/shared';
 
 const ACTIONS: AdapterAction[] = [
     {
+        id: 'list_files',
         name: 'list_files',
         description: 'List files in Google Drive',
         parameters: {
@@ -15,6 +16,7 @@ const ACTIONS: AdapterAction[] = [
         }
     },
     {
+        id: 'create_folder',
         name: 'create_folder',
         description: 'Create a folder in Google Drive',
         parameters: {
@@ -29,6 +31,9 @@ const ACTIONS: AdapterAction[] = [
 ];
 
 export class GoogleDriveAdapter extends BaseAdapter {
+    id = 'google_drive';
+    type = 'oauth' as const;
+    provider = 'google';
     name = 'GoogleDriveAdapter';
     description = 'Manage Google Drive files';
     version = '1.0.0';

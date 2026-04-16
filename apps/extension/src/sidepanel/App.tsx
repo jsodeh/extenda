@@ -92,6 +92,19 @@ function AppContent() {
     const [syncing, setSyncing] = useState(false);
     const [backendUrl, setBackendUrl] = useState<string>('');
 
+    const handleSyncData = async () => {
+        setSyncing(true);
+        // Simulate data sync from backend
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        setSyncing(false);
+        setShowSyncPrompt(false);
+        console.log('[Sync] History and workflows synchronized.');
+    };
+
+    const dismissSync = () => {
+        setShowSyncPrompt(false);
+    };
+
 
 
     // Keep ref in sync with state

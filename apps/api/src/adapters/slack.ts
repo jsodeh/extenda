@@ -4,6 +4,7 @@ import { AdapterAction } from '@extenda/shared';
 
 const ACTIONS: AdapterAction[] = [
     {
+        id: 'send_message',
         name: 'send_message',
         description: 'Send a message to a Slack channel',
         parameters: {
@@ -16,6 +17,7 @@ const ACTIONS: AdapterAction[] = [
         }
     },
     {
+        id: 'get_history',
         name: 'get_history',
         description: 'Get message history from a channel',
         parameters: {
@@ -30,6 +32,9 @@ const ACTIONS: AdapterAction[] = [
 ];
 
 export class SlackAdapter extends BaseAdapter {
+    id = 'slack';
+    type = 'oauth' as const;
+    provider = 'slack';
     name = 'SlackAdapter';
     description = 'Manage Slack messages and channels';
     version = '1.0.0';

@@ -4,6 +4,7 @@ import { AdapterAction } from '@extenda/shared';
 
 const ACTIONS: AdapterAction[] = [
     {
+        id: 'create_task',
         name: 'create_task',
         description: 'Create a new task in Asana',
         parameters: {
@@ -18,6 +19,7 @@ const ACTIONS: AdapterAction[] = [
         }
     },
     {
+        id: 'get_tasks',
         name: 'get_tasks',
         description: 'Get tasks from a project',
         parameters: {
@@ -32,6 +34,9 @@ const ACTIONS: AdapterAction[] = [
 ];
 
 export class AsanaAdapter extends BaseAdapter {
+    id = 'asana';
+    type = 'oauth' as const;
+    provider = 'asana';
     name = 'AsanaAdapter';
     description = 'Manage Asana tasks and projects';
     version = '1.0.0';
