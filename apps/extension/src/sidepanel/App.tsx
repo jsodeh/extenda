@@ -84,6 +84,7 @@ function AppContent() {
     const [showRegister, setShowRegister] = useState(false);
     const [currentExecutionId, setCurrentExecutionId] = useState<string | null>(null);
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+    const sessionIdRef = useRef<string | null>(null);
     const [suggestions, setSuggestions] = useState<Suggestion[]>(STARTER_SUGGESTIONS);
     const [pendingPrompt, setPendingPrompt] = useState<string>('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -107,10 +108,14 @@ function AppContent() {
 
 
 
-    // Keep ref in sync with state
+    // Keep refs in sync with state
     useEffect(() => {
         workflowRef.current = currentWorkflow;
     }, [currentWorkflow]);
+
+    useEffect(() => {
+        sessionIdRef.current = currentSessionId;
+    }, [currentSessionId]);
 
     // Fetch dynamic suggestions based on history
     useEffect(() => {
@@ -485,7 +490,7 @@ function AppContent() {
                 content: data.message,
                 timestamp: new Date()
             });
-            if (data.sessionId && !currentSessionId) {
+            if (data.sessionId && !sessionIdRef.current) {
                 setCurrentSessionId(data.sessionId);
             }
         });
@@ -513,7 +518,7 @@ function AppContent() {
             wsClient.off('workflow:error');
             wsClient.off('session:created');
         };
-    }, [accessToken, currentSessionId]); // Add currentSessionId to dependency if needed, or better use ref for sessionId if callback is stale
+    }, [accessToken]); // Use sessionIdRef instead of currentSessionId to avoid re-registering all listeners on session creation
 
     const handleSubmit = async (message: string, files?: File[], modelConfig?: any) => {
         if (!message.trim() && (!files || files.length === 0)) return;
