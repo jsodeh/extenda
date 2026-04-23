@@ -407,63 +407,10 @@ function AppContent() {
                         return msg;
                     });
 
-                    // Use the backend's AI-generated rich summary if available,
-                    // otherwise fall back to the frontend-generated generic summary
+                    // Use the backend's AI-generated rich summary if available
                     let summaryText = data?.summary || null;
 
-                    if (!summaryText) {
-                        // Fallback: Generate contextual summary from workflow steps
-                        const generateWorkflowSummary = (steps: any[]): string | null => {
-                            const actions = steps
-                                .filter(s => s.status === 'completed')
-                                .map(s => {
-                                    const tool = s.tool?.toLowerCase() || '';
-                                    const desc = s.description?.toLowerCase() || '';
-
-                                    // Google Forms
-                                    if (tool.includes('googleforms') || tool.includes('forms')) {
-                                        if (tool.includes('create') || desc.includes('create')) return 'created a Google Form';
-                                        if (tool.includes('add_questions') || desc.includes('question')) return 'added questions';
-                                    }
-                                    // Gmail
-                                    if (tool.includes('gmail') || tool.includes('email')) {
-                                        if (tool.includes('send') || desc.includes('send')) return 'sent the email';
-                                        if (tool.includes('list') || desc.includes('list')) return 'retrieved emails';
-                                    }
-                                    // Calendar
-                                    if (tool.includes('calendar')) {
-                                        if (tool.includes('create') || desc.includes('create')) return 'created a calendar event';
-                                        if (tool.includes('list') || desc.includes('list')) return 'checked your calendar';
-                                    }
-                                    // Drive
-                                    if (tool.includes('drive')) {
-                                        if (tool.includes('create') || desc.includes('create')) return 'created a document';
-                                        if (tool.includes('list') || desc.includes('list')) return 'found files';
-                                    }
-                                    // AI Processing
-                                    if (tool.includes('aiprocessor') || tool.includes('summarize')) {
-                                        return 'analyzed the content';
-                                    }
-                                    // Notifier - skip, it's just confirmation
-                                    if (tool.includes('notifier')) return null;
-
-                                    // Fallback to step description or tool name
-                                    return s.description || s.tool?.replace(/Adapter_/g, ' ').replace(/_/g, ' ');
-                                })
-                                .filter(Boolean); // Remove nulls
-
-                            if (actions.length === 0) return null;
-                            if (actions.length === 1) return `✅ Done! I ${actions[0]}.`;
-
-                            // Join with proper grammar
-                            const last = actions.pop();
-                            return `✅ Done! I ${actions.join(', ')} and ${last}.`;
-                        };
-
-                        summaryText = generateWorkflowSummary(finalSteps);
-                    }
-
-                    // Only add message if we have a meaningful summary
+                    // Only add message if we have a real backend summary
                     if (summaryText) {
                         return [...updated, {
                             id: Date.now().toString(),

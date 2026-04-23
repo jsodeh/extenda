@@ -147,9 +147,30 @@ io.on('connection', (socket) => {
         }, 60000);
 
         try {
-            // OPTIMIZATION 1: Quick Match First (no infrastructure delays for greetings)
+            // 1. Session & History Initialization (Required for accurate context matching)
+            let sessionId = data.sessionId;
+            if (!sessionId) {
+                // Generate title from user's first message (truncate to 50 chars)
+                const title = data.intent.length > 50
+                    ? data.intent.substring(0, 47) + '...'
+                    : data.intent;
+                const session = await chatService.createSession(user.id, title);
+                sessionId = session.id;
+                socket.emit('session:created', { sessionId });
+            }
+            socket.join(sessionId);
+
+            // Get conversation history BEFORE classification (do not include current message yet)
+            console.log('[DEBUG] Fetching history for context...');
+            const conversationHistory = await orchestrator.getConversationHistory(sessionId);
+
+            // Add user message to history
+            console.log('[DEBUG] Adding user message to history...');
+            await orchestrator.addMessage(sessionId, 'user', data.intent);
+
+            // OPTIMIZATION 1: Quick Match First (with full context)
             console.log('[DEBUG] 0. Running quick intent match...');
-            const quickClassification = await intentClassifier.classify(data.intent, [], data.modelConfig);
+            const quickClassification = await intentClassifier.classify(data.intent, conversationHistory, data.modelConfig);
             console.log('[DEBUG] 0.1. Quick classification:', quickClassification.type);
 
             if (quickClassification.type === 'conversational' && quickClassification.confidence === 1.0) {
@@ -159,21 +180,7 @@ io.on('connection', (socket) => {
                 // Emit typing status IMMEDIATELY so user sees feedback
                 socket.emit('agent:status', { state: 'responding', message: 'Typing response...' });
 
-                // Create or use session asynchronously
-                let sessionId = data.sessionId;
-                if (!sessionId) {
-                    // Generate title from user's first message (truncate to 50 chars)
-                    const title = data.intent.length > 50
-                        ? data.intent.substring(0, 47) + '...'
-                        : data.intent;
-                    const session = await chatService.createSession(user.id, title);
-                    sessionId = session.id;
-                    socket.emit('session:created', { sessionId });
-                }
-                socket.join(sessionId);
 
-                // Add user message
-                await orchestrator.addMessage(sessionId, 'user', data.intent);
 
                 // Generate friendly response - concise for greetings
                 const chatPrompt = `You are Extenda, a friendly AI Executive Assistant.
@@ -206,17 +213,7 @@ RULES:
                 socket.emit('agent:status', { state: 'executing', message: 'Executing...' });
 
                 try {
-                    // Create session if needed
-                    let sessionId = data.sessionId;
-                    if (!sessionId) {
-                        const session = await chatService.createSession(user.id);
-                        sessionId = session.id;
-                        socket.emit('session:created', { sessionId });
-                    }
-                    socket.join(sessionId);
 
-                    // Add user message
-                    await orchestrator.addMessage(sessionId, 'user', data.intent);
 
                     // Direct execution - no workflow needed
                     const result = await orchestrator.executeDirectCommand({
@@ -251,7 +248,7 @@ RULES:
                 } catch (error) {
                     console.error('[ERROR] Simple command execution failed:', error);
                     const errorMessage = `❌ Failed: ${(error as Error).message}`;
-                    socket.emit('chat:response', { message: errorMessage, sessionId: data.sessionId });
+                    socket.emit('chat:response', { message: errorMessage, sessionId });
                     socket.emit('agent:status', { state: 'error', message: 'Execution failed' });
                     clearTimeout(timeoutHandle);
                     return;
@@ -264,25 +261,9 @@ RULES:
             console.log('[DEBUG] 1. Status emitted');
 
             // OPTIMIZATION 2: Lazy OAuth - only for workflow intents
-            console.log('[DEBUG] 2. Checking tokens for workflow...');
+            console.log('[DEBUG] Checking tokens for workflow...');
             const validUser = await oauthManager.ensureValidToken(user);
-            console.log('[DEBUG] 3. Tokens valid');
-
-            // Create or use session
-            let sessionId = data.sessionId;
-            if (!sessionId) {
-                // Generate title from user's first message (truncate to 50 chars)
-                const title = data.intent.length > 50
-                    ? data.intent.substring(0, 47) + '...'
-                    : data.intent;
-                const session = await chatService.createSession(user.id, title);
-                sessionId = session.id;
-                socket.emit('session:created', { sessionId });
-            }
-            console.log('[DEBUG] 4. Session ID:', sessionId);
-
-            // Join the session room for real-time updates
-            socket.join(sessionId);
+            console.log('[DEBUG] Tokens valid');
 
             // Context for tools (tokens)
             const context = {
@@ -293,16 +274,6 @@ RULES:
                 },
                 modelConfig: data.modelConfig
             };
-
-            // Get conversation history for intent classification
-            console.log('[DEBUG] 5. Fetching history...');
-            const conversationHistory = await orchestrator.getConversationHistory(sessionId);
-            console.log('[DEBUG] 6. History fetched');
-
-            // Add user message to history
-            console.log('[DEBUG] 7. Adding user message...');
-            await orchestrator.addMessage(sessionId, 'user', data.intent);
-            console.log('[DEBUG] 8. User message added');
 
             // Workflow planning
             socket.emit('agent:status', { state: 'planning', message: 'Designing workflow...' });
