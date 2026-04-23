@@ -22,6 +22,7 @@ class EnvironmentService {
     };
 
     private listeners: ((state: EnvironmentState) => void)[] = [];
+    private _probeCounter: number = 0;
 
     constructor() {
         this.initialize();
@@ -77,13 +78,29 @@ class EnvironmentService {
             }
         };
 
-        const [local, cloud] = await Promise.all([
-            check(LOCAL_URL),
-            check(CLOUD_URL)
-        ]);
+        // Always probe the active environment
+        const activeUrl = this.state.current === 'local' ? LOCAL_URL : CLOUD_URL;
+        const activeResult = await check(activeUrl);
 
-        this.state.localReachable = local;
-        this.state.cloudReachable = cloud;
+        if (this.state.current === 'local') {
+            this.state.localReachable = activeResult;
+        } else {
+            this.state.cloudReachable = activeResult;
+        }
+
+        // Only probe the INACTIVE environment occasionally (every ~60s via the probeCounter)
+        // to avoid flooding the console with ERR_CONNECTION_REFUSED when local isn't running
+        this._probeCounter++;
+        if (this._probeCounter % 2 === 0) {
+            const inactiveUrl = this.state.current === 'local' ? CLOUD_URL : LOCAL_URL;
+            const inactiveResult = await check(inactiveUrl);
+            if (this.state.current === 'local') {
+                this.state.cloudReachable = inactiveResult;
+            } else {
+                this.state.localReachable = inactiveResult;
+            }
+        }
+
         this.notify();
     }
 
