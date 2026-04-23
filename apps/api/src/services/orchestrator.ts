@@ -583,7 +583,8 @@ User Email: ${user.email}` : '';
 
             // Only emit complete if no failures
             if (failedSteps.size === 0) {
-                // Generate user-friendly summary of the workflow results
+                // Generate user-friendly summary of the workflow results BEFORE emitting complete
+                let richSummary: string | null = null;
                 try {
                     const lastStepId = Array.from(stepResults.keys()).pop();
                     const lastResult = lastStepId ? stepResults.get(lastStepId) : null;
@@ -600,27 +601,27 @@ The workflow completed successfully with this result:
 ${resultStr.slice(0, 2000)}
 
 Generate a brief, friendly, conversational response summarizing the result for the user. Be concise but informative. 
+- If it's a list of emails, mention subjects, senders and key details.
 - If it's a list of files, mention how many were found and list their names briefly.
 - If it's an email action, confirm it was sent.
 - If it's a form, provide the link.
 Do NOT return JSON. Return a natural language response.`;
 
-                        const summary = await generateText(summaryPrompt, modelConfig);
+                        richSummary = await generateText(summaryPrompt, modelConfig);
 
-                        // Send the friendly summary to the user
-                        await this.addMessage(execution.context.sessionId, 'assistant', summary);
-                        this.io?.to(`user:${execution.userId}`).emit('chat:response', {
-                            sessionId: execution.context.sessionId,
-                            content: summary,
-                            role: 'assistant'
-                        });
+                        // Persist the summary to chat history
+                        await this.addMessage(execution.context.sessionId, 'assistant', richSummary);
                     }
                 } catch (summaryError) {
                     console.error('Failed to generate workflow summary:', summaryError);
                     // Fall back to workflow complete without summary
                 }
 
-                this.io?.emit(EVENTS_SERVER.WORKFLOW_COMPLETE, { workflowId: execution.workflowId });
+                // Emit complete WITH the summary so the frontend can display it directly
+                this.io?.emit(EVENTS_SERVER.WORKFLOW_COMPLETE, {
+                    workflowId: execution.workflowId,
+                    summary: richSummary
+                });
             }
         } catch (error) {
             console.error('Workflow execution failed:', error);

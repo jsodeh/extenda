@@ -378,7 +378,7 @@ function AppContent() {
             });
         });
 
-        wsClient.on('workflow:complete', () => {
+        wsClient.on('workflow:complete', (data: any) => {
             // Persist the final state of the workflow to the message history
             if (workflowRef.current) {
                 const finalWorkflow = workflowRef.current;
@@ -402,62 +402,68 @@ function AppContent() {
                         return msg;
                     });
 
-                    // Generate contextual summary from workflow steps
-                    const generateWorkflowSummary = (steps: any[]): string | null => {
-                        const actions = steps
-                            .filter(s => s.status === 'completed')
-                            .map(s => {
-                                const tool = s.tool?.toLowerCase() || '';
-                                const desc = s.description?.toLowerCase() || '';
+                    // Use the backend's AI-generated rich summary if available,
+                    // otherwise fall back to the frontend-generated generic summary
+                    let summaryText = data?.summary || null;
 
-                                // Google Forms
-                                if (tool.includes('googleforms') || tool.includes('forms')) {
-                                    if (tool.includes('create') || desc.includes('create')) return 'created a Google Form';
-                                    if (tool.includes('add_questions') || desc.includes('question')) return 'added questions';
-                                }
-                                // Gmail
-                                if (tool.includes('gmail') || tool.includes('email')) {
-                                    if (tool.includes('send') || desc.includes('send')) return 'sent the email';
-                                    if (tool.includes('list') || desc.includes('list')) return 'retrieved emails';
-                                }
-                                // Calendar
-                                if (tool.includes('calendar')) {
-                                    if (tool.includes('create') || desc.includes('create')) return 'created a calendar event';
-                                    if (tool.includes('list') || desc.includes('list')) return 'checked your calendar';
-                                }
-                                // Drive
-                                if (tool.includes('drive')) {
-                                    if (tool.includes('create') || desc.includes('create')) return 'created a document';
-                                    if (tool.includes('list') || desc.includes('list')) return 'found files';
-                                }
-                                // AI Processing
-                                if (tool.includes('aiprocessor') || tool.includes('summarize')) {
-                                    return 'analyzed the content';
-                                }
-                                // Notifier - skip, it's just confirmation
-                                if (tool.includes('notifier')) return null;
+                    if (!summaryText) {
+                        // Fallback: Generate contextual summary from workflow steps
+                        const generateWorkflowSummary = (steps: any[]): string | null => {
+                            const actions = steps
+                                .filter(s => s.status === 'completed')
+                                .map(s => {
+                                    const tool = s.tool?.toLowerCase() || '';
+                                    const desc = s.description?.toLowerCase() || '';
 
-                                // Fallback to step description or tool name
-                                return s.description || s.tool?.replace(/Adapter_/g, ' ').replace(/_/g, ' ');
-                            })
-                            .filter(Boolean); // Remove nulls
+                                    // Google Forms
+                                    if (tool.includes('googleforms') || tool.includes('forms')) {
+                                        if (tool.includes('create') || desc.includes('create')) return 'created a Google Form';
+                                        if (tool.includes('add_questions') || desc.includes('question')) return 'added questions';
+                                    }
+                                    // Gmail
+                                    if (tool.includes('gmail') || tool.includes('email')) {
+                                        if (tool.includes('send') || desc.includes('send')) return 'sent the email';
+                                        if (tool.includes('list') || desc.includes('list')) return 'retrieved emails';
+                                    }
+                                    // Calendar
+                                    if (tool.includes('calendar')) {
+                                        if (tool.includes('create') || desc.includes('create')) return 'created a calendar event';
+                                        if (tool.includes('list') || desc.includes('list')) return 'checked your calendar';
+                                    }
+                                    // Drive
+                                    if (tool.includes('drive')) {
+                                        if (tool.includes('create') || desc.includes('create')) return 'created a document';
+                                        if (tool.includes('list') || desc.includes('list')) return 'found files';
+                                    }
+                                    // AI Processing
+                                    if (tool.includes('aiprocessor') || tool.includes('summarize')) {
+                                        return 'analyzed the content';
+                                    }
+                                    // Notifier - skip, it's just confirmation
+                                    if (tool.includes('notifier')) return null;
 
-                        if (actions.length === 0) return null;
-                        if (actions.length === 1) return `✅ Done! I ${actions[0]}.`;
+                                    // Fallback to step description or tool name
+                                    return s.description || s.tool?.replace(/Adapter_/g, ' ').replace(/_/g, ' ');
+                                })
+                                .filter(Boolean); // Remove nulls
 
-                        // Join with proper grammar
-                        const last = actions.pop();
-                        return `✅ Done! I ${actions.join(', ')} and ${last}.`;
-                    };
+                            if (actions.length === 0) return null;
+                            if (actions.length === 1) return `✅ Done! I ${actions[0]}.`;
 
-                    const summary = generateWorkflowSummary(finalSteps);
+                            // Join with proper grammar
+                            const last = actions.pop();
+                            return `✅ Done! I ${actions.join(', ')} and ${last}.`;
+                        };
+
+                        summaryText = generateWorkflowSummary(finalSteps);
+                    }
 
                     // Only add message if we have a meaningful summary
-                    if (summary) {
+                    if (summaryText) {
                         return [...updated, {
                             id: Date.now().toString(),
                             role: 'assistant' as const,
-                            content: summary,
+                            content: summaryText,
                             timestamp: new Date()
                         }];
                     }
