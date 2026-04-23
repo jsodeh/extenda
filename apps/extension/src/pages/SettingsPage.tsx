@@ -31,7 +31,7 @@ interface DefaultModels {
 }
 
 const PROVIDER_MODELS = {
-    google: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
+    google: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-2.0-flash-exp', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-1.0-pro'],
     openai: ['gpt-4o', 'gpt-4o-mini', 'o1-preview', 'o1-mini'],
     anthropic: ['claude-3-5-sonnet-latest', 'claude-3-opus-latest', 'claude-3-haiku-20240307'],
     ollama: ['llama3', 'gemma3:4b', 'mistral', 'codellama', 'phi3']

@@ -15,7 +15,7 @@ const PROVIDER_DATA: Record<Provider, { label: string; iconBaseColor: string; ic
         label: 'Google', 
         iconBaseColor: 'text-blue-500', 
         iconBgColor: 'bg-blue-500/10',
-        models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash']
+        models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-2.0-flash-exp', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-1.0-pro']
     },
     openai: { 
         label: 'OpenAI', 
