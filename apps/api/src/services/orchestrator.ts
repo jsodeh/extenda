@@ -590,12 +590,17 @@ User Email: ${user.email}` : '';
                     const lastResult = lastStepId ? stepResults.get(lastStepId) : null;
 
                     if (lastResult && execution.context?.sessionId) {
-                        const resultStr = typeof lastResult === 'string'
-                            ? lastResult
-                            : JSON.stringify(lastResult, null, 2);
+                        // Check if the last step was an AIProcessor which already returns a nice summarized payload
+                        if (typeof lastResult === 'object' && lastResult !== null && (lastResult.summary || lastResult.output || lastResult.payload)) {
+                            richSummary = lastResult.summary || lastResult.output || lastResult.payload;
+                            if (typeof richSummary !== 'string') richSummary = JSON.stringify(richSummary);
+                        } else {
+                            const resultStr = typeof lastResult === 'string'
+                                ? lastResult
+                                : JSON.stringify(lastResult, null, 2);
 
-                        // Generate a user-friendly summary using AI
-                        const summaryPrompt = `You are a helpful assistant. The user asked: "${workflow.intent}"
+                            // Generate a user-friendly summary using AI
+                            const summaryPrompt = `You are a helpful assistant. The user asked: "${workflow.intent}"
 
 The workflow completed successfully with this result:
 ${resultStr.slice(0, 2000)}
@@ -607,20 +612,26 @@ Generate a brief, friendly, conversational response summarizing the result for t
 - If it's a form, provide the link.
 Do NOT return JSON. Return a natural language response.`;
 
-                        richSummary = await generateText(summaryPrompt, modelConfig);
+                            richSummary = await generateText(summaryPrompt, modelConfig);
+                        }
 
                         // Persist the summary to chat history
-                        await this.addMessage(execution.context.sessionId, 'assistant', richSummary);
+                        await this.addMessage(execution.context.sessionId, 'assistant', richSummary!);
+                        
+                        // Emit as a standard chat response so the user definitely receives it in their message feed
+                        this.io?.to(execution.context.sessionId).emit('chat:response', {
+                            message: richSummary,
+                            sessionId: execution.context.sessionId
+                        });
                     }
                 } catch (summaryError) {
                     console.error('Failed to generate workflow summary:', summaryError);
                     // Fall back to workflow complete without summary
                 }
 
-                // Emit complete WITH the summary so the frontend can display it directly
+                // Emit complete (frontend no longer generates a summary message from this)
                 this.io?.emit(EVENTS_SERVER.WORKFLOW_COMPLETE, {
-                    workflowId: execution.workflowId,
-                    summary: richSummary
+                    workflowId: execution.workflowId
                 });
             }
         } catch (error) {
