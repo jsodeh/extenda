@@ -68,12 +68,13 @@ function AppContent() {
 
     // Keep storage in sync with accessToken (handled by AuthProvider now, but we keep it here for background script)
     useEffect(() => {
+        if (!isLoaded) return; // Prevent wiping storage before it loads
         if (accessToken) {
             chrome.storage.local.set({ accessToken });
         } else {
             chrome.storage.local.remove(['accessToken']);
         }
-    }, [accessToken]);
+    }, [accessToken, isLoaded]);
     const [currentPage, setCurrentPage] = useState<Page>('chat');
     const [messages, setMessages] = useState<Message[]>([]);
     const [status, setStatus] = useState('Disconnected');

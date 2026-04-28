@@ -15,7 +15,7 @@ const CLOUD_URL = import.meta.env.VITE_API_URL_CLOUD || 'https://extenda-pxa6.on
 
 class EnvironmentService {
     private state: EnvironmentState = {
-        current: 'local',
+        current: 'cloud',
         localReachable: false,
         cloudReachable: false,
         isSwitching: false
