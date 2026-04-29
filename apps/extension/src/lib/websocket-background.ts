@@ -43,7 +43,7 @@ class BackgroundWebSocketClient {
             reconnection: true,
             reconnectionAttempts: 10,
             reconnectionDelay: 1000,
-            timeout: 20000,
+            timeout: 60000,
             auth: { token }
         });
 

@@ -52,7 +52,7 @@ const ChevronUp = ({ className }: { className?: string }) => (
 export function ChatMessage({ message, currentWorkflow, pendingStep, onApprove, onReject }: ChatMessageProps) {
     const isUser = message.role === 'user';
     const isSystem = message.role === 'system';
-    const isError = message.content?.toLowerCase().includes('error') || message.error;
+    const isError = !!message.error;
 
     // Check if this message displays the active workflow that is pending approval
     const isPendingApproval = message.workflow && currentWorkflow && message.workflow.id === currentWorkflow.id && pendingStep;
