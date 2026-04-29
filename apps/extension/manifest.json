@@ -18,7 +18,8 @@
         "bookmarks",
         "offscreen",
         "cookies",
-        "identity"
+        "identity",
+        "notifications"
     ],
     "content_security_policy": {
         "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://extenda-pxa6.onrender.com wss://extenda-pxa6.onrender.com https://*.googleapis.com ws://localhost:* http://localhost:*;"

@@ -140,11 +140,11 @@ io.on('connection', (socket) => {
     socket.on(EVENTS_CLIENT.WORKFLOW_START, async (data: WorkflowStartPayload) => {
         console.log('Received workflow start request:', data);
 
-        // Safety timeout for entire request
+        // Safety timeout for entire request (increased to 5 minutes)
         const timeoutHandle = setTimeout(() => {
-            console.error('[TIMEOUT] Request exceeded 60s limit');
+            console.error('[TIMEOUT] Request exceeded 5m limit');
             socket.emit(EVENTS_SERVER.WORKFLOW_ERROR, { error: 'Request timeout - please try again' });
-        }, 60000);
+        }, 300000);
 
         try {
             // 1. Session & History Initialization (Required for accurate context matching)

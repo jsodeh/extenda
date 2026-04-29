@@ -899,14 +899,24 @@ Do NOT return JSON. Return a natural language response.`;
             this.io.on(EVENTS_CLIENT.TOOL_RESULT as any, handleResult);
 
             // 4. Timeout with proper cleanup
+            const TOOL_TIMEOUTS: Record<string, number> = {
+                'DOMReader': 120000,      // 2 mins
+                'GmailScraper': 120000,   // 2 mins
+                'Screenshot': 60000,      // 1 min
+                'FormFiller': 60000,      // 1 min
+                'SmartClick': 60000,      // 1 min
+                'Notifier': 10000         // 10 secs
+            };
+            const timeoutMs = TOOL_TIMEOUTS[tool] || 30000;
+            
             const timeoutHandle = setTimeout(() => {
-                console.error(`[ToolExecution] Timeout for requestId: ${requestId}`);
+                console.error(`[ToolExecution] Timeout for requestId: ${requestId} after ${timeoutMs}ms`);
 
                 // Remove listener to prevent memory leak
                 this.io?.off(EVENTS_CLIENT.TOOL_RESULT as any, handleResult);
 
-                reject(new Error(`Tool execution timed out after 30s (${tool})`));
-            }, 30000);
+                reject(new Error(`Tool execution timed out after ${timeoutMs/1000}s (${tool})`));
+            }, timeoutMs);
         });
     }
 
