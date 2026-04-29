@@ -671,7 +671,7 @@ function AppContent() {
                     </div>
                 )}
 
-                <div className="flex flex-col min-h-full pb-60">
+                <div className="flex flex-col min-h-full pb-24">
                     <div className="flex-1 flex flex-col">
                         {messages.length === 0 ? (
                             <div className="flex-1 flex flex-col items-center justify-center text-center p-6 transition-all duration-1000">
@@ -713,8 +713,8 @@ function AppContent() {
 
                         {/* Thinking Indicator */}
                         {agentStatus && (
-                            <div className="max-w-3xl mx-auto px-4 py-2">
-                                <TextShimmer className="text-sm font-medium">
+                            <div className="max-w-3xl mx-auto px-4 py-1">
+                                <TextShimmer className="text-[11px] font-medium">
                                     {agentStatus.state === 'paused' ? 'Waiting for approval...' : agentStatus.message}
                                 </TextShimmer>
                             </div>
