@@ -110,13 +110,13 @@ export default function PlanView({ steps }: PlanViewProps) {
                                                     }}
                                                 >
                                                     {step.status === 'completed' ? (
-                                                        <CheckCircle2 className="h-4.5 w-4.5 text-green-500 dark:text-green-400" />
+                                                        <CheckCircle2 className="h-4 w-4 text-green-500 dark:text-green-400" />
                                                     ) : step.status === 'in-progress' ? (
-                                                        <Loader className="h-4.5 w-4.5 text-blue-500 dark:text-blue-400 animate-spin" />
+                                                        <Loader className="h-4 w-4 text-blue-500 dark:text-blue-400 animate-spin" />
                                                     ) : step.status === 'failed' ? (
-                                                        <XCircle className="h-4.5 w-4.5 text-red-500 dark:text-red-400" />
+                                                        <XCircle className="h-4 w-4 text-red-500 dark:text-red-400" />
                                                     ) : (
-                                                        <Circle className="h-4.5 w-4.5 text-muted-foreground" />
+                                                        <Circle className="h-4 w-4 text-muted-foreground" />
                                                     )}
                                                 </motion.div>
                                             </AnimatePresence>
@@ -124,7 +124,7 @@ export default function PlanView({ steps }: PlanViewProps) {
 
                                         <div className="flex min-w-0 flex-grow items-center justify-between">
                                             <div className="mr-2 flex-1 truncate">
-                                                <span className={`text-[11px] ${isCompleted ? 'text-muted-foreground line-through' : 'text-foreground'} `}>
+                                                <span className={`text-[10px] ${isCompleted ? 'text-muted-foreground line-through' : 'text-foreground'} `}>
                                                     {step.description}
                                                 </span>
                                             </div>
@@ -155,7 +155,7 @@ export default function PlanView({ steps }: PlanViewProps) {
                                     <AnimatePresence mode="wait">
                                         {isExpanded && (
                                             <motion.div
-                                                className="ml-5 mt-1 mb-1 text-[10px] text-foreground font-mono"
+                                                className="ml-4 mt-0.5 mb-0.5 text-[9px] text-foreground font-mono"
                                                 initial={{ opacity: 0, height: 0 }}
                                                 animate={{ opacity: 1, height: 'auto' }}
                                                 exit={{ opacity: 0, height: 0 }}

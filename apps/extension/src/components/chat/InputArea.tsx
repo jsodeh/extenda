@@ -196,7 +196,7 @@ export function InputArea({ onSend, disabled, sessionId, accessToken, onTranscri
     }, [input]);
 
     return (
-        <div className="p-4 bg-background/80 backdrop-blur-md border-t border-border">
+        <div className="p-2 bg-background/80 backdrop-blur-md border-t border-border">
             <div className="max-w-3xl mx-auto">
                 <div className={cn(
                     "relative flex flex-col rounded-xl border border-input bg-card shadow-sm transition-all",
@@ -290,11 +290,11 @@ export function InputArea({ onSend, disabled, sessionId, accessToken, onTranscri
                         }
                         disabled={disabled}
                         rows={1}
-                        className="w-full bg-transparent px-4 pt-3 pb-2 text-sm placeholder:text-muted-foreground focus:outline-none resize-none min-h-[60px] max-h-[150px] overflow-y-auto"
+                        className="w-full bg-transparent px-3 pt-2 pb-1.5 text-sm placeholder:text-muted-foreground focus:outline-none resize-none min-h-[44px] max-h-[150px] overflow-y-auto"
                     />
 
                     {/* Bottom Actions */}
-                    <div className="flex items-center justify-between px-2 pb-2">
+                    <div className="flex items-center justify-between px-2 pb-1.5">
                         {/* Left Actions */}
                         <div className="flex items-center gap-1">
                             <button

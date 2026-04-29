@@ -84,35 +84,35 @@ export function ChatMessage({ message, currentWorkflow, pendingStep, onApprove, 
 
     return (
         <div className={cn(
-            "group w-full py-4 border-b border-border/10",
+            "group w-full py-1.5 border-b border-border/10",
             isSystem ? "bg-muted/10 italic" : "bg-transparent"
         )}>
             <div className="max-w-3xl mx-auto px-4">
                 {/* Content Column - no avatar icons for cleaner alignment */}
-                <div className="flex-1 min-w-0 space-y-1.5">
+                <div className="flex-1 min-w-0 space-y-0.5">
                     <div className="flex items-baseline justify-between mb-0.5">
                         <span className={cn(
-                            "text-[10px] uppercase font-bold tracking-widest",
+                            "text-[9px] uppercase font-bold tracking-widest",
                             isUser ? "text-primary/70" : isSystem ? "text-muted-foreground/60" : "text-emerald-500/70"
                         )}>
                             {isUser ? "You" : isSystem ? "System" : "Extenda"}
                         </span>
-                        <span className="text-[9px] text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span className="text-[8px] text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity">
                             {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                     </div>
 
-                    <div className="max-w-none text-foreground break-words leading-relaxed text-[13px]">
+                    <div className="max-w-none text-foreground break-words leading-relaxed text-[12px]">
                         {isError ? (
-                            <div className="text-destructive text-[13px] bg-destructive/5 p-3 rounded-lg border border-destructive/10">
-                                <p className="font-bold flex items-center gap-1.5 uppercase tracking-tight text-[11px]">
-                                    <AlertTriangle size={12} strokeWidth={3} />
+                            <div className="text-destructive text-[12px] bg-destructive/5 p-2 rounded-lg border border-destructive/10">
+                                <p className="font-bold flex items-center gap-1 uppercase tracking-tight text-[10px]">
+                                    <AlertTriangle size={11} strokeWidth={3} />
                                     {isJsonError ? 'Execution Error' : 'System Error'}
                                 </p>
-                                <p className="mt-1 opacity-90">{displayContent}</p>
+                                <p className="mt-0.5 opacity-90">{displayContent}</p>
                             </div>
                         ) : message.content?.startsWith('✅ Step Completed') || message.content?.startsWith('❌ Step Failed') ? (
-                            <div className="text-[11px] font-mono bg-muted/20 p-2 rounded-md italic border border-border/10">
+                            <div className="text-[10px] font-mono bg-muted/20 p-1.5 rounded-md italic border border-border/10">
                                 <p className="whitespace-pre-wrap">{displayContent}</p>
                             </div>
                         ) : (
@@ -142,7 +142,7 @@ export function ChatMessage({ message, currentWorkflow, pendingStep, onApprove, 
 
                         {/* Inline Plan View */}
                         {message.workflow && (
-                            <div className="mt-5 not-prose">
+                            <div className="mt-2 not-prose">
                                 <PlanView steps={currentWorkflow?.id === message.workflow.id
                                     ? currentWorkflow.steps
                                     : message.workflow.steps}
@@ -150,45 +150,45 @@ export function ChatMessage({ message, currentWorkflow, pendingStep, onApprove, 
 
                                 {/* Approval Controls */}
                                 {isPendingApproval && (
-                                    <div className="mt-4 flex flex-col gap-4 p-5 bg-amber-500/5 border border-amber-500/20 rounded-2xl shadow-sm">
+                                    <div className="mt-3 flex flex-col gap-3 p-3 bg-amber-500/5 border border-amber-500/20 rounded-xl shadow-sm">
                                         <div className="flex items-start justify-between">
-                                            <div className="flex items-start gap-4">
-                                                <div className="p-2 bg-amber-500/10 rounded-xl">
-                                                    <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+                                            <div className="flex items-start gap-3">
+                                                <div className="p-1.5 bg-amber-500/10 rounded-lg">
+                                                    <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
                                                 </div>
                                                 <div>
-                                                    <h4 className="text-sm font-bold text-foreground">
+                                                    <h4 className="text-[13px] font-bold text-foreground">
                                                         Approval Required
                                                     </h4>
-                                                    <p className="text-xs text-muted-foreground mt-1">
+                                                    <p className="text-[11px] text-muted-foreground mt-0.5">
                                                         Action: <span className="font-mono text-primary">{pendingStep.tool}</span>
                                                     </p>
                                                 </div>
                                             </div>
                                             <button
                                                 onClick={() => setIsExpanded(!isExpanded)}
-                                                className="p-1.5 hover:bg-muted rounded-full transition-colors"
+                                                className="p-1 hover:bg-muted rounded-full transition-colors"
                                             >
-                                                {isExpanded ? <ChevronUp className="w-5 h-5 text-muted-foreground" /> : <ChevronDown className="w-5 h-5 text-muted-foreground" />}
+                                                {isExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
                                             </button>
                                         </div>
 
                                         {isExpanded && pendingStep.params && (
-                                            <div className="mt-1 text-[11px] font-mono bg-background/50 border border-border/50 p-3 rounded-xl max-h-48 overflow-y-auto shadow-inner">
+                                            <div className="mt-1 text-[10px] font-mono bg-background/50 border border-border/50 p-2 rounded-lg max-h-40 overflow-y-auto shadow-inner">
                                                 {JSON.stringify(pendingStep.params, null, 2)}
                                             </div>
                                         )}
 
-                                        <div className="flex gap-3 pl-1">
+                                        <div className="flex gap-2 pl-1">
                                             <button
                                                 onClick={onApprove}
-                                                className="px-5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-emerald-500/20 active:scale-95"
+                                                className="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-[11px] font-bold transition-all shadow-lg shadow-emerald-500/20 active:scale-95"
                                             >
                                                 Approve
                                             </button>
                                             <button
                                                 onClick={onReject}
-                                                className="px-5 py-2 bg-muted hover:bg-muted/80 text-foreground rounded-xl text-xs font-bold transition-all border border-border active:scale-95"
+                                                className="px-4 py-1.5 bg-muted hover:bg-muted/80 text-foreground rounded-lg text-[11px] font-bold transition-all border border-border active:scale-95"
                                             >
                                                 Reject
                                             </button>

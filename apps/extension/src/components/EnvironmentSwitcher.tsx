@@ -25,7 +25,7 @@ export default function EnvironmentSwitcher() {
         <div className="relative">
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border transition-all active:scale-95 ${
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-xl border transition-all active:scale-95 ${
                     isLocal 
                         ? 'bg-primary/5 border-primary/20 hover:bg-primary/10' 
                         : 'bg-emerald-500/5 border-emerald-500/20 hover:bg-emerald-500/10'

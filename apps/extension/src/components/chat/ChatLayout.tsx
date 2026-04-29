@@ -34,31 +34,31 @@ export function ChatLayout({ children, currentPage, onNavigate, status, onReconn
                 onCancel={() => envService.probe()} // Simple revert to idle
             />
             {/* Header - Fixed Background and Visibility */}
-            <header className="flex-none border-b border-border bg-card px-4 py-3 z-10 shadow-sm">
+            <header className="flex-none border-b border-border bg-card px-3 py-2 z-10 shadow-sm">
                 <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                         {/* Corrected Logo Logic: Dark icon on Light background, Light icon on Dark background */}
                         <img
                             src={iconDark}
                             alt="Extenda"
-                            className="h-6 w-auto dark:hidden drop-shadow-sm"
+                            className="h-5 w-auto dark:hidden drop-shadow-sm"
                         />
                         <img
                             src={iconLight}
                             alt="Extenda"
-                            className="h-6 w-auto hidden dark:block drop-shadow-sm transition-opacity duration-300"
+                            className="h-5 w-auto hidden dark:block drop-shadow-sm transition-opacity duration-300"
                         />
                         
                         <EnvironmentSwitcher />
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                         <button
                             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                            className="p-2 rounded-xl hover:bg-muted text-foreground transition-all active:scale-95"
+                            className="p-1.5 rounded-xl hover:bg-muted text-foreground transition-all active:scale-95"
                             title="Toggle Theme"
                         >
-                            {theme === 'dark' ? <Moon size={18} strokeWidth={2} /> : <Sun size={18} strokeWidth={2} />}
+                            {theme === 'dark' ? <Moon size={16} strokeWidth={2} /> : <Sun size={16} strokeWidth={2} />}
                         </button>
                         <NavigationMenu currentPage={currentPage} onNavigate={onNavigate} />
                     </div>

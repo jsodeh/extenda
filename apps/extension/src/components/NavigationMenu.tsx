@@ -24,13 +24,13 @@ export default function NavigationMenu({ currentPage, onNavigate }: NavigationMe
             {/* Menu Toggle Button */}
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="p-2 rounded-lg hover:bg-muted transition-colors"
+                className="p-1.5 rounded-lg hover:bg-muted transition-colors"
                 title="Menu"
             >
                 {isOpen ? (
-                    <X className="h-5 w-5 text-foreground" />
+                    <X className="h-[18px] w-[18px] text-foreground" />
                 ) : (
-                    <Menu className="h-5 w-5 text-foreground" />
+                    <Menu className="h-[18px] w-[18px] text-foreground" />
                 )}
             </button>
 
