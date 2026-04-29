@@ -37,7 +37,7 @@ export function ModeSelectDropdown({ value, onChange }: ModeSelectDropdownProps)
             </button>
 
             {isOpen && (
-                <div className="absolute bottom-full mb-2 left-0 w-56 rounded-xl shadow-2xl bg-card border border-border overflow-hidden z-50 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                <div className="absolute bottom-full mb-2 right-0 w-56 rounded-xl shadow-2xl bg-card border border-border overflow-hidden z-50 animate-in fade-in slide-in-from-bottom-2 duration-200">
                     <div className="p-1.5">
                         <button
                             onClick={() => { onChange('Fast'); setIsOpen(false); }}

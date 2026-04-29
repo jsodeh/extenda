@@ -57,7 +57,7 @@ export default function EnvironmentSwitcher() {
             {isOpen && (
                 <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-                    <div className="absolute top-full right-0 mt-2 w-52 bg-card border border-border rounded-2xl shadow-2xl z-50 py-2 animate-in fade-in zoom-in-95 duration-200 origin-top-right">
+                    <div className="absolute top-full left-0 mt-2 w-52 bg-card border border-border rounded-2xl shadow-2xl z-50 py-2 animate-in fade-in zoom-in-95 duration-200 origin-top-left">
                         <div className="px-3 py-1.5 mb-1">
                             <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Select Environment</h4>
                         </div>

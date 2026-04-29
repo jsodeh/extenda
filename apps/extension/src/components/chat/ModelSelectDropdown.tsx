@@ -66,7 +66,7 @@ export function ModelSelectDropdown({ provider, model, onChange }: ModelSelectDr
             </button>
 
             {isOpen && (
-                <div className="absolute bottom-full mb-2 left-0 w-64 rounded-xl shadow-2xl bg-card border border-border overflow-hidden z-50 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                <div className="absolute bottom-full mb-2 right-0 w-64 rounded-xl shadow-2xl bg-card border border-border overflow-hidden z-50 animate-in fade-in slide-in-from-bottom-2 duration-200">
                     <div className="max-h-80 overflow-y-auto p-1.5 no-scrollbar">
                         {(Object.keys(PROVIDER_DATA) as Provider[]).map(pKey => (
                             <div key={pKey} className="mb-2 last:mb-0">
