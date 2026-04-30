@@ -27,6 +27,46 @@ const ACTIONS: AdapterAction[] = [
                 title: { type: 'string', description: 'The title of the new spreadsheet.' }
             }
         }
+    },
+    {
+        id: 'append_data',
+        name: 'append_data',
+        description: 'Append rows of data to a sheet',
+        parameters: {
+            type: 'object',
+            required: ['spreadsheetId', 'range', 'values'],
+            properties: {
+                spreadsheetId: { type: 'string', description: 'Spreadsheet ID' },
+                range: { type: 'string', description: 'A1 notation of range to search for table end (e.g. Sheet1!A1)' },
+                values: { type: 'array', items: { type: 'array', items: { type: 'any' } }, description: '2D array of values to append' }
+            }
+        }
+    },
+    {
+        id: 'update_data',
+        name: 'update_data',
+        description: 'Update a range of cells in a sheet',
+        parameters: {
+            type: 'object',
+            required: ['spreadsheetId', 'range', 'values'],
+            properties: {
+                spreadsheetId: { type: 'string', description: 'Spreadsheet ID' },
+                range: { type: 'string', description: 'A1 notation of range to update' },
+                values: { type: 'array', items: { type: 'array', items: { type: 'any' } }, description: '2D array of new values' }
+            }
+        }
+    },
+    {
+        id: 'get_spreadsheet',
+        name: 'get_spreadsheet',
+        description: 'Get spreadsheet metadata and sheet names',
+        parameters: {
+            type: 'object',
+            required: ['spreadsheetId'],
+            properties: {
+                spreadsheetId: { type: 'string', description: 'Spreadsheet ID' }
+            }
+        }
     }
 ];
 
@@ -75,6 +115,34 @@ export class GoogleSheetsAdapter extends BaseAdapter {
                     }
                 });
                 return createRes.data;
+
+            case 'append_data':
+                const appendRes = await sheets.spreadsheets.values.append({
+                    spreadsheetId: params.spreadsheetId,
+                    range: params.range,
+                    valueInputOption: 'USER_ENTERED',
+                    requestBody: {
+                        values: params.values
+                    }
+                });
+                return appendRes.data;
+
+            case 'update_data':
+                const updateRes = await sheets.spreadsheets.values.update({
+                    spreadsheetId: params.spreadsheetId,
+                    range: params.range,
+                    valueInputOption: 'USER_ENTERED',
+                    requestBody: {
+                        values: params.values
+                    }
+                });
+                return updateRes.data;
+
+            case 'get_spreadsheet':
+                const getRes = await sheets.spreadsheets.get({
+                    spreadsheetId: params.spreadsheetId
+                });
+                return getRes.data;
 
             default:
                 throw new Error(`Action ${actionName} not supported in GoogleSheetsAdapter`);

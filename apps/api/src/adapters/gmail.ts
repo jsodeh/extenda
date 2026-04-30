@@ -29,6 +29,53 @@ const ACTIONS: AdapterAction[] = [
                 body: { type: 'string', description: 'Email body content' }
             }
         }
+    },
+    {
+        id: 'get_message',
+        name: 'get_message',
+        description: 'Get full content of a specific email',
+        parameters: {
+            type: 'object',
+            required: ['id'],
+            properties: {
+                id: { type: 'string', description: 'Message ID' }
+            }
+        }
+    },
+    {
+        id: 'get_thread',
+        name: 'get_thread',
+        description: 'Get all messages in a conversation thread',
+        parameters: {
+            type: 'object',
+            required: ['id'],
+            properties: {
+                id: { type: 'string', description: 'Thread ID' }
+            }
+        }
+    },
+    {
+        id: 'create_draft',
+        name: 'create_draft',
+        description: 'Create a draft email',
+        parameters: {
+            type: 'object',
+            required: ['to', 'subject', 'body'],
+            properties: {
+                to: { type: 'string', description: 'Recipient email address' },
+                subject: { type: 'string', description: 'Email subject' },
+                body: { type: 'string', description: 'Email body content' }
+            }
+        }
+    },
+    {
+        id: 'list_labels',
+        name: 'list_labels',
+        description: 'List all Gmail labels',
+        parameters: {
+            type: 'object',
+            properties: {}
+        }
     }
 ];
 
@@ -41,7 +88,9 @@ export class GmailAdapter extends BaseAdapter {
     version = '1.0.0';
     scopes = [
         'https://www.googleapis.com/auth/gmail.readonly',
-        'https://www.googleapis.com/auth/gmail.send'
+        'https://www.googleapis.com/auth/gmail.send',
+        'https://www.googleapis.com/auth/gmail.compose',
+        'https://www.googleapis.com/auth/gmail.modify'
     ];
     actions = ACTIONS;
 
@@ -186,6 +235,52 @@ export class GmailAdapter extends BaseAdapter {
                     // Re-throw with context
                     throw new Error(`Failed to send email: ${error.message || error}`);
                 }
+
+            case 'get_message':
+                const msgRes = await gmail.users.messages.get({
+                    userId: 'me',
+                    id: params.id
+                });
+                return msgRes.data;
+
+            case 'get_thread':
+                const threadRes = await gmail.users.threads.get({
+                    userId: 'me',
+                    id: params.id
+                });
+                return threadRes.data;
+
+            case 'create_draft':
+                const draftRaw = [
+                    `To: ${params.to}`,
+                    'Content-Type: text/html; charset=utf-8',
+                    'MIME-Version: 1.0',
+                    `Subject: ${params.subject}`,
+                    '',
+                    params.body
+                ].join('\n');
+
+                const encodedDraft = Buffer.from(draftRaw)
+                    .toString('base64')
+                    .replace(/\+/g, '-')
+                    .replace(/\//g, '_')
+                    .replace(/=+$/, '');
+
+                const draftRes = await gmail.users.drafts.create({
+                    userId: 'me',
+                    requestBody: {
+                        message: {
+                            raw: encodedDraft
+                        }
+                    }
+                });
+                return draftRes.data;
+
+            case 'list_labels':
+                const labelsRes = await gmail.users.labels.list({
+                    userId: 'me'
+                });
+                return labelsRes.data.labels;
 
             default:
                 throw new Error(`Action ${actionName} not supported`);

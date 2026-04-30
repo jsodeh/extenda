@@ -42,6 +42,54 @@ const ACTIONS: AdapterAction[] = [
                 maxResults: { type: 'number', description: 'Max issues to return' }
             }
         }
+    },
+    {
+        id: 'add_comment',
+        name: 'add_comment',
+        description: 'Add a comment to an issue',
+        parameters: {
+            type: 'object',
+            required: ['issueIdOrKey', 'body'],
+            properties: {
+                issueIdOrKey: { type: 'string', description: 'Issue Key or ID' },
+                body: { type: 'string', description: 'Comment text' }
+            }
+        }
+    },
+    {
+        id: 'transition_issue',
+        name: 'transition_issue',
+        description: 'Change the status of an issue (e.g., move to "In Progress")',
+        parameters: {
+            type: 'object',
+            required: ['issueIdOrKey', 'transitionId'],
+            properties: {
+                issueIdOrKey: { type: 'string', description: 'Issue Key or ID' },
+                transitionId: { type: 'string', description: 'ID of the transition to perform' }
+            }
+        }
+    },
+    {
+        id: 'list_projects',
+        name: 'list_projects',
+        description: 'List all available Jira projects',
+        parameters: {
+            type: 'object',
+            properties: {}
+        }
+    },
+    {
+        id: 'assign_issue',
+        name: 'assign_issue',
+        description: 'Assign an issue to a user',
+        parameters: {
+            type: 'object',
+            required: ['issueIdOrKey', 'accountId'],
+            properties: {
+                issueIdOrKey: { type: 'string', description: 'Issue Key or ID' },
+                accountId: { type: 'string', description: 'Atlassian Account ID of the assignee' }
+            }
+        }
     }
 ];
 
@@ -87,6 +135,27 @@ export class JiraAdapter extends BaseAdapter {
                 return await client.issueSearch.searchForIssuesUsingJql({
                     jql: params.jql,
                     maxResults: params.maxResults || 10
+                });
+
+            case 'add_comment':
+                return await client.issueComments.addComment({
+                    issueIdOrKey: params.issueIdOrKey,
+                    body: params.body
+                });
+
+            case 'transition_issue':
+                return await client.issues.doTransition({
+                    issueIdOrKey: params.issueIdOrKey,
+                    transition: { id: params.transitionId }
+                });
+
+            case 'list_projects':
+                return await client.projects.getAllProjects();
+
+            case 'assign_issue':
+                return await client.issues.assignIssue({
+                    issueIdOrKey: params.issueIdOrKey,
+                    accountId: params.accountId
                 });
 
             default:

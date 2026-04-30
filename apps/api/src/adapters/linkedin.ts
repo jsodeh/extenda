@@ -29,6 +29,29 @@ const ACTIONS: AdapterAction[] = [
             type: 'object',
             properties: {}
         }
+    },
+    {
+        id: 'delete_post',
+        name: 'delete_post',
+        description: 'Delete a post from LinkedIn',
+        parameters: {
+            type: 'object',
+            required: ['postId'],
+            properties: {
+                postId: { type: 'string', description: 'ID of the post to delete' }
+            }
+        }
+    },
+    {
+        id: 'list_posts',
+        name: 'list_posts',
+        description: 'List recent posts by the user',
+        parameters: {
+            type: 'object',
+            properties: {
+                count: { type: 'number', description: 'Number of posts to return' }
+            }
+        }
     }
 ];
 
@@ -123,6 +146,22 @@ export class LinkedInAdapter extends BaseAdapter {
                     fullName: `${profile.localizedFirstName} ${profile.localizedLastName}`,
                     profileUrl: `https://www.linkedin.com/in/${profile.id}`
                 };
+
+            case 'delete_post':
+                await api.delete(`/ugcPosts/${params.postId}`);
+                return { success: true, message: `Post ${params.postId} deleted` };
+
+            case 'list_posts':
+                const meRes = await api.get('/me');
+                const myUrn = `urn:li:person:${meRes.data.id}`;
+                const postsRes = await api.get('/ugcPosts', {
+                    params: {
+                        q: 'authors',
+                        authors: `List(${myUrn})`,
+                        count: params.count || 10
+                    }
+                });
+                return postsRes.data.elements;
 
             default:
                 throw new Error(`Action ${actionName} not supported`);

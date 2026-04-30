@@ -30,6 +30,56 @@ const ACTIONS: AdapterAction[] = [
                 maxResults: { type: 'number', description: 'Max events to return' }
             }
         }
+    },
+    {
+        id: 'delete_event',
+        name: 'delete_event',
+        description: 'Delete a calendar event',
+        parameters: {
+            type: 'object',
+            required: ['eventId'],
+            properties: {
+                eventId: { type: 'string', description: 'ID of the event to delete' },
+                calendarId: { type: 'string', description: 'Calendar ID (default: primary)' }
+            }
+        }
+    },
+    {
+        id: 'update_event',
+        name: 'update_event',
+        description: 'Update an existing calendar event',
+        parameters: {
+            type: 'object',
+            required: ['eventId'],
+            properties: {
+                eventId: { type: 'string', description: 'ID of the event to update' },
+                summary: { type: 'string', description: 'New title' },
+                description: { type: 'string', description: 'New description' },
+                start: { type: 'string', description: 'New start time (ISO 8601)' },
+                end: { type: 'string', description: 'New end time (ISO 8601)' }
+            }
+        }
+    },
+    {
+        id: 'get_event',
+        name: 'get_event',
+        description: 'Get details of a specific calendar event',
+        parameters: {
+            type: 'object',
+            required: ['eventId'],
+            properties: {
+                eventId: { type: 'string', description: 'Event ID' }
+            }
+        }
+    },
+    {
+        id: 'list_calendars',
+        name: 'list_calendars',
+        description: 'List all calendars the user has access to',
+        parameters: {
+            type: 'object',
+            properties: {}
+        }
     }
 ];
 
@@ -88,6 +138,37 @@ export class GoogleCalendarAdapter extends BaseAdapter {
                     orderBy: 'startTime'
                 });
                 return res.data.items;
+
+            case 'delete_event':
+                await calendar.events.delete({
+                    calendarId: params.calendarId || 'primary',
+                    eventId: params.eventId
+                });
+                return { success: true, message: `Event ${params.eventId} deleted` };
+
+            case 'update_event':
+                const updateRes = await calendar.events.patch({
+                    calendarId: 'primary',
+                    eventId: params.eventId,
+                    requestBody: {
+                        summary: params.summary,
+                        description: params.description,
+                        start: params.start ? { dateTime: params.start } : undefined,
+                        end: params.end ? { dateTime: params.end } : undefined
+                    }
+                });
+                return updateRes.data;
+
+            case 'get_event':
+                const getRes = await calendar.events.get({
+                    calendarId: 'primary',
+                    eventId: params.id
+                });
+                return getRes.data;
+
+            case 'list_calendars':
+                const calendarsRes = await calendar.calendarList.list();
+                return calendarsRes.data.items;
 
             default:
                 throw new Error(`Action ${actionName} not supported`);
