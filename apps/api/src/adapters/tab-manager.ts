@@ -2,9 +2,9 @@ import { BaseAdapter } from './base-adapter.js';
 import { AdapterAction } from '@extenda/shared';
 
 const ACTIONS: AdapterAction[] = [
-    { id: 'open_tab', name: 'Open New Tab', description: 'Launch a new website in a new tab.', parameters: { type: 'object', properties: {} } },
-    { id: 'switch_tab', name: 'Switch Tabs', description: 'Move focus to a different open tab.', parameters: { type: 'object', properties: {} } },
-    { id: 'close_tab', name: 'Close Tab', description: 'Close the active or background tabs.', parameters: { type: 'object', properties: {} } },
+    { id: 'open_tab', name: 'Open New Tab', description: 'Launch a new website in a new tab.', parameters: { type: 'object', properties: { url: { type: 'string', description: 'URL to open' } }, required: ['url'] } },
+    { id: 'switch_tab', name: 'Switch Tabs', description: 'Move focus to a different open tab.', parameters: { type: 'object', properties: { tabId: { type: 'number', description: 'ID of the tab to switch to' } }, required: ['tabId'] } },
+    { id: 'close_tab', name: 'Close Tab', description: 'Close the active or background tabs.', parameters: { type: 'object', properties: { tabId: { type: 'number', description: 'ID of the tab to close' } }, required: ['tabId'] } },
     { id: 'list_tabs', name: 'List All Tabs', description: 'See a list of all your currently open tabs.', parameters: { type: 'object', properties: {} } }
 ];
 

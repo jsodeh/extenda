@@ -8,7 +8,9 @@ import { ToolExecutionRequest } from '@extenda/shared';
 const CONTENT_SCRIPT_TOOLS = ['DOMReader', 'FormFiller', 'GmailScraper'];
 const MESSAGE_TYPE_MAP: Record<string, string> = {
     'DOMReader': 'EXECUTE_DOM_READER',
+    'Browser Interaction_Read Page Content': 'EXECUTE_DOM_READER',
     'FormFiller': 'EXECUTE_FORM_FILLER',
+    'Browser Interaction_Fill Forms': 'EXECUTE_FORM_FILLER',
     'GmailScraper': 'EXECUTE_GMAIL_SCRAPER'
 };
 
@@ -52,26 +54,43 @@ const handleToolExecution = async (data: ToolExecutionRequest) => {
     try {
         let result;
 
-        if (tool === 'TabManager') {
-            result = await handleTabManager(params);
-        } else if (tool === 'Screenshot') {
+        if (tool === 'TabManager' || tool.startsWith('Tab Management_')) {
+            const normalizedParams = { ...params };
+            if (tool === 'Tab Management_Open New Tab') normalizedParams.action = 'open_tab';
+            else if (tool === 'Tab Management_Switch Tabs') normalizedParams.action = 'switch_tab';
+            else if (tool === 'Tab Management_Close Tab') normalizedParams.action = 'close_tab';
+            else if (tool === 'Tab Management_List All Tabs') normalizedParams.action = 'list_tabs';
+            
+            result = await handleTabManager(normalizedParams);
+        } else if (tool === 'Screenshot' || tool === 'Browser Interaction_Take Screenshot') {
             result = await handleScreenshot(params);
-        } else if (tool === 'SmartClick') {
+        } else if (tool === 'SmartClick' || tool === 'Browser Interaction_Smart Click') {
             result = await handleSmartClick(params);
-        } else if (tool === 'Notifier') {
-            if (params.action === 'notify') {
+        } else if (tool === 'Notifier' || tool === 'System Utilities_Send Notifications') {
+            const normalizedParams = { ...params };
+            if (tool === 'System Utilities_Send Notifications') normalizedParams.action = 'notify';
+            
+            if (normalizedParams.action === 'notify') {
                 const notificationId = await chrome.notifications.create({
                     type: 'basic',
                     iconUrl: 'icon-128.png',
-                    title: params.title || 'Extenda',
-                    message: params.message
+                    title: normalizedParams.title || 'Extenda',
+                    message: normalizedParams.message
                 });
                 result = { success: true, notificationId };
             } else {
-                throw new Error(`Notifier action ${params.action} not yet implemented`);
+                throw new Error(`Notifier action ${normalizedParams.action} not yet implemented`);
             }
-        } else if (CONTENT_SCRIPT_TOOLS.includes(tool)) {
-            result = await executeContentScriptTool(tool, params);
+        } else if (CONTENT_SCRIPT_TOOLS.includes(tool) || tool.startsWith('Browser Interaction_')) {
+            // Normalize parameters for mapped tools
+            const normalizedParams = { ...params };
+            if (tool === 'Browser Interaction_Read Page Content') {
+                normalizedParams.action = 'extract_text';
+            } else if (tool === 'Browser Interaction_Fill Forms') {
+                normalizedParams.action = 'fill_form';
+            }
+            
+            result = await executeContentScriptTool(tool, normalizedParams);
         } else {
             throw new Error(`Unknown client tool: ${tool}`);
         }

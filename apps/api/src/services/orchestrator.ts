@@ -692,7 +692,12 @@ Do NOT return JSON. Return a natural language response.`;
                 const toolNameLower = toolName.toLowerCase();
 
                 // Check if tool is client-side or server-side (Case insensitive check)
-                const WORKFLOW_CLIENT_TOOLS = ['tabmanager', 'notifier', 'domreader', 'formfiller', 'gmailscraper', 'screenshot', 'smartclick'];
+                const WORKFLOW_CLIENT_TOOLS = [
+                    'tabmanager', 'notifier', 'domreader', 'formfiller', 'gmailscraper', 'screenshot', 'smartclick',
+                    'browser interaction_read page content', 'browser interaction_smart click', 'browser interaction_fill forms', 'browser interaction_take screenshot',
+                    'tab management_open new tab', 'tab management_switch tabs', 'tab management_close tab', 'tab management_list all tabs',
+                    'system utilities_send notifications'
+                ];
                 if (WORKFLOW_CLIENT_TOOLS.includes(toolNameLower)) {
                     console.log(`[Orchestrator] Routing ${toolName} to client.`);
                     result = await this.executeClientTool(

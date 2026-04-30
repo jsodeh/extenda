@@ -2,7 +2,7 @@ import { BaseAdapter } from './base-adapter.js';
 import { AdapterAction } from '@extenda/shared';
 
 const ACTIONS: AdapterAction[] = [
-    { id: 'notify', name: 'Send Notifications', description: 'Show desktop alerts when tasks are done.', parameters: { type: 'object', properties: {} } },
+    { id: 'notify', name: 'Send Notifications', description: 'Show desktop alerts when tasks are done.', parameters: { type: 'object', properties: { message: { type: 'string', description: 'Notification message' }, title: { type: 'string', description: 'Notification title' } }, required: ['message'] } },
     { id: 'get_current_time', name: 'Check Time', description: 'Access current date and time information.', parameters: { type: 'object', properties: {} } }
 ];
 

@@ -3,8 +3,8 @@ import { AdapterAction } from '@extenda/shared';
 
 const ACTIONS: AdapterAction[] = [
     { id: 'read_page', name: 'Read Page Content', description: 'Analyze the text and elements of the active tab.', parameters: { type: 'object', properties: {} } },
-    { id: 'smart_click', name: 'Smart Click', description: 'Click buttons or links based on your instructions.', parameters: { type: 'object', properties: {} } },
-    { id: 'fill_form', name: 'Fill Forms', description: 'Type data into input fields and forms.', parameters: { type: 'object', properties: {} } },
+    { id: 'smart_click', name: 'Smart Click', description: 'Click buttons or links based on your instructions.', parameters: { type: 'object', properties: { description: { type: 'string', description: 'Description of the element to click' } }, required: ['description'] } },
+    { id: 'fill_form', name: 'Fill Forms', description: 'Type data into input fields and forms.', parameters: { type: 'object', properties: { schema: { type: 'object', description: 'Mapping of field descriptions to values' } }, required: ['schema'] } },
     { id: 'screenshot', name: 'Take Screenshot', description: 'Capture a visual image of the current page.', parameters: { type: 'object', properties: {} } }
 ];
 
