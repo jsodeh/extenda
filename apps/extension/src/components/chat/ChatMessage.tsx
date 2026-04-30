@@ -87,7 +87,7 @@ export function ChatMessage({ message, currentWorkflow, pendingStep, onApprove, 
             "group w-full py-1.5 border-b border-border/10",
             isSystem ? "bg-muted/10 italic" : "bg-transparent"
         )}>
-            <div className="max-w-3xl mx-auto px-4">
+            <div className="max-w-md mx-auto px-3">
                 {/* Content Column - no avatar icons for cleaner alignment */}
                 <div className="flex-1 min-w-0 space-y-0.5">
                     <div className="flex items-baseline justify-between mb-0.5">
@@ -150,7 +150,7 @@ export function ChatMessage({ message, currentWorkflow, pendingStep, onApprove, 
 
                                 {/* Approval Controls */}
                                 {isPendingApproval && (
-                                    <div className="mt-3 flex flex-col gap-3 p-3 bg-amber-500/5 border border-amber-500/20 rounded-xl shadow-sm">
+                                    <div className="mt-3 flex flex-col gap-3 p-2.5 bg-amber-500/5 border border-amber-500/20 rounded-xl shadow-sm">
                                         <div className="flex items-start justify-between">
                                             <div className="flex items-start gap-3">
                                                 <div className="p-1.5 bg-amber-500/10 rounded-lg">

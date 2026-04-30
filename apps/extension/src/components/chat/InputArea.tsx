@@ -197,7 +197,7 @@ export function InputArea({ onSend, disabled, sessionId, accessToken, onTranscri
 
     return (
         <div className="p-2 bg-background/80 backdrop-blur-md border-t border-border">
-            <div className="max-w-3xl mx-auto">
+            <div className="max-w-md mx-auto">
                 <div className={cn(
                     "relative flex flex-col rounded-xl border border-input bg-card shadow-sm transition-all",
                     "focus-within:border-primary focus-within:ring-1 focus-within:ring-primary",
