@@ -23,14 +23,23 @@ async function executeContentScriptTool(tool: string, params: any): Promise<any>
         throw new Error('No active tab found');
     }
 
+    // Skip restricted URLs
+    if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('edge://') || tab.url?.startsWith('about:')) {
+        throw new Error('Cannot execute tools on browser-restricted pages.');
+    }
+
     console.log(`[Background] Executing ${tool} on tab ${tab.id}: ${tab.url}`);
 
-    try {
-        const response = await chrome.tabs.sendMessage(tab.id, {
-            type: MESSAGE_TYPE_MAP[tool],
+    const sendMessage = async () => {
+        return await chrome.tabs.sendMessage(tab.id!, {
+            type: MESSAGE_TYPE_MAP[tool] || tool,
             action: params.action,
             params
         });
+    };
+
+    try {
+        const response = await sendMessage();
 
         if (!response || !response.success) {
             throw new Error(response?.error || 'Content script execution failed');
@@ -40,6 +49,29 @@ async function executeContentScriptTool(tool: string, params: any): Promise<any>
     } catch (error: any) {
         if (error.message?.includes('Could not establish connection') ||
             error.message?.includes('Receiving end does not exist')) {
+            
+            console.log(`[Background] Content script missing on tab ${tab.id}, attempting injection...`);
+            
+            try {
+                const manifest = chrome.runtime.getManifest();
+                const contentScriptFile = manifest.content_scripts?.[0]?.js?.[0];
+                
+                if (contentScriptFile) {
+                    await chrome.scripting.executeScript({
+                        target: { tabId: tab.id },
+                        files: [contentScriptFile]
+                    });
+                    
+                    // Wait a moment for initialization
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    const response = await sendMessage();
+                    if (response && response.success) return response.data;
+                }
+            } catch (injectError) {
+                console.error('[Background] Injection failed:', injectError);
+            }
+
             throw new Error('Content script not loaded on this page. Try refreshing the page.');
         }
         throw error;

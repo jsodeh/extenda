@@ -906,10 +906,14 @@ Do NOT return JSON. Return a natural language response.`;
             // 4. Timeout with proper cleanup
             const TOOL_TIMEOUTS: Record<string, number> = {
                 'DOMReader': 120000,      // 2 mins
+                'Browser Interaction_Read Page Content': 120000,
                 'GmailScraper': 120000,   // 2 mins
                 'Screenshot': 60000,      // 1 min
+                'Browser Interaction_Take Screenshot': 60000,
                 'FormFiller': 60000,      // 1 min
+                'Browser Interaction_Fill Forms': 60000,
                 'SmartClick': 60000,      // 1 min
+                'Browser Interaction_Smart Click': 60000,
                 'Notifier': 10000         // 10 secs
             };
             const timeoutMs = TOOL_TIMEOUTS[tool] || 30000;
