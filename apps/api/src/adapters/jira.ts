@@ -141,7 +141,7 @@ export class JiraAdapter extends BaseAdapter {
                 return await client.issueComments.addComment({
                     issueIdOrKey: params.issueIdOrKey,
                     body: params.body
-                });
+                } as any);
 
             case 'transition_issue':
                 return await client.issues.doTransition({
@@ -150,7 +150,7 @@ export class JiraAdapter extends BaseAdapter {
                 });
 
             case 'list_projects':
-                return await client.projects.getAllProjects();
+                return await (client.projects as any).searchProjects();
 
             case 'assign_issue':
                 return await client.issues.assignIssue({

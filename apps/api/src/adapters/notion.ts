@@ -104,7 +104,7 @@ export class NotionAdapter extends BaseAdapter {
                 });
 
             case 'query_database':
-                return await notion.databases.query({
+                return await (notion.databases as any).query({
                     database_id: params.database_id,
                     filter: params.filter
                 });
