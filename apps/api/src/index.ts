@@ -135,7 +135,25 @@ io.on('connection', (socket) => {
     socket.join(`user:${user.id}`);
     console.log(`Socket ${socket.id} joined room user:${user.id}`);
 
-    // ...
+    // Forward tool execution results from background worker to orchestrator
+    // CRITICAL: This was missing before — tool:result events from clients were silently dropped
+    // because io.on() only handles 'connection' events, not client-emitted events.
+    socket.on('tool:result', (data: any) => {
+        console.log(`[Socket] tool:result from ${socket.id}:`, data.executionId, data.stepId, data.status);
+        orchestrator.handleToolResult(data);
+    });
+
+    // Forward tool acknowledgements (Phase 1 of 2-phase timeout)
+    socket.on('tool:ack', (data: any) => {
+        console.log(`[Socket] tool:ack from ${socket.id}:`, data.executionId, data.stepId);
+        orchestrator.handleToolAck(data);
+    });
+
+    // Forward tool progress heartbeats (extends Phase 2 timeout for long-running tools)
+    socket.on('tool:progress', (data: any) => {
+        console.log(`[Socket] tool:progress from ${socket.id}:`, data.executionId, data.stepId);
+        orchestrator.handleToolProgress(data);
+    });
 
     socket.on(EVENTS_CLIENT.WORKFLOW_START, async (data: WorkflowStartPayload) => {
         console.log('Received workflow start request:', data);

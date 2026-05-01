@@ -1,11 +1,12 @@
 import { Server } from 'socket.io';
 import { randomUUID } from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import { toolRegistry } from '../tools/registry.js';
 import { adapterRegistry } from '../adapters/index.js';
 import { knowledgeBase } from './knowledge-base.js';
 import { generateText, ModelConfig } from '../lib/models.js';
 import { WorkflowDependencyResolver } from '../lib/workflow-dependencies.js';
-import { EVENTS_SERVER, EVENTS_CLIENT, User, Workflow, Execution, WorkflowStep, ToolExecutionResult } from '@extenda/shared';
+import { EVENTS_SERVER, EVENTS_CLIENT, User, Workflow, Execution, WorkflowStep, ToolExecutionResult, ToolAck } from '@extenda/shared';
 import { db } from '../db/index.js';
 import { workflows, executions, stepExecutions } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
@@ -17,11 +18,45 @@ import { SpecializedAgent } from '../agents/specialized-agent.js';
 export class AgentOrchestrator {
     private io: Server | null = null;
     private activeExecutions: Map<string, Execution> = new Map();
-    // Removed in-memory history
-    // ...
+    // EventEmitter-based tool result/ack routing (replaces broken io.on() pattern)
+    private toolResultEmitter = new EventEmitter();
+    private toolAckEmitter = new EventEmitter();
 
     setServer(io: Server) {
         this.io = io;
+    }
+
+    /**
+     * Called by socket connection handler when a client sends tool:result.
+     * Routes the result to the correct pending executeClientTool() promise via EventEmitter.
+     */
+    handleToolResult(data: ToolExecutionResult) {
+        const requestId = `${data.executionId}_${data.stepId}`;
+        console.log(`[Orchestrator] Routing tool:result for requestId: ${requestId}`);
+        // Emit on the main channel (Phase 2 listens here)
+        this.toolResultEmitter.emit(requestId, data);
+        // Also emit on the early channel (Phase 1 ack-wait listens here for fast results)
+        this.toolResultEmitter.emit(`early:${requestId}`, data);
+    }
+
+    /**
+     * Called by socket connection handler when a client sends tool:ack.
+     * Confirms the background worker received the tool:execute request.
+     */
+    handleToolAck(data: ToolAck) {
+        const requestId = `${data.executionId}_${data.stepId}`;
+        console.log(`[Orchestrator] Tool ack received for requestId: ${requestId}`);
+        this.toolAckEmitter.emit(requestId, data);
+    }
+
+    /**
+     * Called by socket connection handler when a client sends tool:progress.
+     * Extends the timeout for a running tool execution.
+     */
+    handleToolProgress(data: { executionId: string; stepId: string; message?: string }) {
+        const requestId = `${data.executionId}_${data.stepId}`;
+        console.log(`[Orchestrator] Tool progress for requestId: ${requestId}:`, data.message || 'working...');
+        this.toolResultEmitter.emit(`progress:${requestId}`, data);
     }
 
 
@@ -540,8 +575,27 @@ User Email: ${user.email}` : '';
                         return await this.executeStep(execution, { ...step, params: paramsWithResults }, stepResults);
                     } catch (error) {
                         console.error(`Step ${step.id} failed:`, error);
+
+                        // SOFT-FAIL: Data-fetching steps inject degraded context instead of aborting
+                        // This lets downstream AIProcessor steps run with a transparent error message
+                        const DATA_FETCH_TOOLS = [
+                            'DOMReader', 'Browser Interaction_Read Page Content',
+                            'GmailScraper', 'FormFiller', 'Browser Interaction_Fill Forms'
+                        ];
+                        const toolName = step.tool?.trim() || '';
+                        if (DATA_FETCH_TOOLS.includes(toolName) || toolName.toLowerCase().includes('read page')) {
+                            console.log(`[Orchestrator] Soft-failing data step ${step.id} (${toolName}) - workflow continues`);
+                            const errorMsg = (error as Error).message;
+                            // Inject error context so AIProcessor can explain the situation transparently
+                            return {
+                                _softFailed: true,
+                                error: errorMsg,
+                                fallbackContent: `[Data retrieval failed for ${toolName}: ${errorMsg}. Please inform the user about this limitation and work with whatever context is available.]`
+                            };
+                        }
+
                         failedSteps.add(step.id);
-                        throw error; // Re-throw to propagate
+                        throw error; // Re-throw for truly fatal failures
                     }
                 });
 
@@ -552,7 +606,12 @@ User Email: ${user.email}` : '';
                 pendingSteps.forEach((step, index) => {
                     const settled = settledResults[index];
                     if (settled.status === 'fulfilled') {
-                        stepResults.set(step.id, settled.value);
+                        const value = settled.value;
+                        stepResults.set(step.id, value);
+                        // Soft-failed steps are stored as results (not failures) so workflow continues
+                        if (value && typeof value === 'object' && value._softFailed) {
+                            console.log(`[Orchestrator] Step ${step.id} soft-failed, workflow continues with degraded data`);
+                        }
                     } else {
                         failedSteps.add(step.id);
                     }
@@ -840,91 +899,223 @@ Do NOT return JSON. Return a natural language response.`;
         throw new Error(`Unknown tool for direct execution: ${tool}`);
     }
 
-    private executeClientTool(
+    /**
+     * Intelligent client tool execution with 2-phase timeout and connection-aware resilience.
+     * 
+     * Phase 1 (Ack): Wait for the background worker to acknowledge receipt (15s, with reconnect retry).
+     * Phase 2 (Execute): Wait for the actual tool result (tool-specific timeout, extendable via progress).
+     * 
+     * Key principle: network instability ≠ failure. If the connection flickers, we wait and retry
+     * rather than failing immediately.
+     */
+    private async executeClientTool(
         executionId: string,
         stepId: string,
         tool: string,
         params: any,
-        socket?: any,  // Optional for backward compatibility with workflows
-        userId?: string  // Add userId for room broadcasting
+        socket?: any,
+        userId?: string
     ): Promise<any> {
-        return new Promise((resolve, reject) => {
-            if (!this.io) {
-                reject(new Error('No io instance available'));
-                return;
+        if (!this.io) {
+            throw new Error('No io instance available');
+        }
+
+        const requestId = `${executionId}_${stepId}`;
+        console.log(`[ToolExecution] Starting client tool ${tool} with requestId: ${requestId}`);
+
+        // Tool-specific execution timeouts (Phase 2)
+        const TOOL_TIMEOUTS: Record<string, number> = {
+            'DOMReader': 60000,
+            'Browser Interaction_Read Page Content': 60000,
+            'GmailScraper': 90000,
+            'Screenshot': 30000,
+            'Browser Interaction_Take Screenshot': 30000,
+            'FormFiller': 30000,
+            'Browser Interaction_Fill Forms': 30000,
+            'SmartClick': 30000,
+            'Browser Interaction_Smart Click': 30000,
+            'Notifier': 10000
+        };
+        const executionTimeoutMs = TOOL_TIMEOUTS[tool] || 30000;
+
+        // --- PHASE 0: Connection-aware smart waiting ---
+        // Check if any sockets exist in the user's room. If not, wait for reconnection.
+        if (userId) {
+            const room = this.io.sockets.adapter.rooms.get(`user:${userId}`);
+            const socketsInRoom = room?.size || 0;
+
+            if (socketsInRoom === 0) {
+                console.warn(`[ToolExecution] No sockets in room user:${userId}. Waiting for reconnection...`);
+                this.io.to(`user:${userId}`).emit('agent:status', {
+                    state: 'waiting',
+                    message: 'Waiting for browser extension to reconnect...'
+                });
+
+                // Wait up to 30s for a socket to join the room
+                const reconnected = await this.waitForRoomConnection(userId, 30000);
+                if (!reconnected) {
+                    throw new Error(
+                        'Your browser extension lost connection and did not reconnect within 30 seconds. ' +
+                        'Please check your network connection and ensure the Extenda extension is active, then try again.'
+                    );
+                }
+                console.log(`[ToolExecution] Socket reconnected in room user:${userId}. Proceeding.`);
             }
+        }
 
-            // Generate unique request ID to prevent cross-contamination
-            const requestId = `${executionId}_${stepId}`;
-            console.log(`[ToolExecution] Starting client tool ${tool} with requestId: ${requestId}`);
-
-            // CRITICAL: Always broadcast to user room for client-side tools
-            // The background worker has a SEPARATE socket connection from the sidepanel
-            // Using socket.emit() would only reach the sidepanel, not the background worker that handles tools
+        // --- Helper: Send tool:execute to the user's room ---
+        const emitToolExecute = () => {
+            const payload = { executionId, stepId, tool, params };
             if (userId) {
-                console.log(`[ToolExecution] Broadcasting to room user:${userId}`);
-                this.io.to(`user:${userId}`).emit(EVENTS_SERVER.TOOL_EXECUTE, {
-                    executionId,
-                    stepId,
-                    tool,
-                    params
-                });
+                console.log(`[ToolExecution] Broadcasting tool:execute to room user:${userId}`);
+                this.io!.to(`user:${userId}`).emit(EVENTS_SERVER.TOOL_EXECUTE, payload);
             } else {
-                // Fallback - broadcast to all (for workflows without userId)
                 console.warn('[ToolExecution] No userId - using broadcast fallback');
-                this.io.emit(EVENTS_SERVER.TOOL_EXECUTE, {
-                    executionId,
-                    stepId,
-                    tool,
-                    params
-                });
+                this.io!.emit(EVENTS_SERVER.TOOL_EXECUTE, payload);
+            }
+        };
+
+        // --- PHASE 1: Ack with reconnect resilience ---
+        // Try up to 2 times to get an ack. If connection flickers between attempts, re-send.
+        const ACK_TIMEOUT_MS = 15000;
+        const MAX_ACK_ATTEMPTS = 2;
+        let ackReceived = false;
+
+        for (let attempt = 1; attempt <= MAX_ACK_ATTEMPTS; attempt++) {
+            emitToolExecute();
+
+            ackReceived = await new Promise<boolean>((resolveAck) => {
+                const ackHandler = () => {
+                    clearTimeout(ackTimer);
+                    resolveAck(true);
+                };
+
+                this.toolAckEmitter.once(requestId, ackHandler);
+
+                // Also resolve immediately if we get the full result before the ack
+                // (very fast tools may return before ack timeout)
+                const earlyResultHandler = () => {
+                    clearTimeout(ackTimer);
+                    this.toolAckEmitter.off(requestId, ackHandler);
+                    resolveAck(true); // Result came in, no need for ack
+                };
+                // Peek at result emitter without consuming - just check if result arrives during ack phase
+                this.toolResultEmitter.once(`early:${requestId}`, earlyResultHandler);
+
+                const ackTimer = setTimeout(() => {
+                    this.toolAckEmitter.off(requestId, ackHandler);
+                    this.toolResultEmitter.off(`early:${requestId}`, earlyResultHandler);
+                    resolveAck(false);
+                }, ACK_TIMEOUT_MS);
+            });
+
+            if (ackReceived) {
+                console.log(`[ToolExecution] Ack received for ${tool} (attempt ${attempt})`);
+                break;
             }
 
-            // 2. Setup one-time listener for result
-            // CRITICAL: Always use io.on() because tool:result comes from the BACKGROUND WORKER socket,
-            // not the sidepanel socket. Both are in the user room, but they're DIFFERENT sockets.
-            const handleResult = (data: ToolExecutionResult) => {
-                if (data.executionId === executionId && data.stepId === stepId) {
-                    console.log(`[ToolExecution] Received result for requestId: ${requestId}`);
-                    clearTimeout(timeoutHandle);
+            // No ack - check if the connection dropped and came back
+            if (attempt < MAX_ACK_ATTEMPTS && userId) {
+                const room = this.io.sockets.adapter.rooms.get(`user:${userId}`);
+                const stillConnected = (room?.size || 0) > 0;
 
-                    // Cleanup listener immediately
-                    this.io?.off(EVENTS_CLIENT.TOOL_RESULT as any, handleResult);
-
-                    if (data.status === 'success') {
-                        resolve(data.result);
-                    } else {
-                        reject(new Error(data.error || 'Tool execution failed'));
+                if (stillConnected) {
+                    console.warn(`[ToolExecution] No ack but socket still connected. Retrying (attempt ${attempt + 1})...`);
+                    // Connection might have flickered - wait briefly then retry
+                    await new Promise(r => setTimeout(r, 2000));
+                } else {
+                    console.warn(`[ToolExecution] No ack and no sockets in room. Waiting for reconnect...`);
+                    const reconnected = await this.waitForRoomConnection(userId, 15000);
+                    if (!reconnected) {
+                        throw new Error(
+                            'Browser extension is not responding. The connection may have dropped. ' +
+                            'Please ensure the Extenda extension is active and try again.'
+                        );
                     }
+                    console.log(`[ToolExecution] Reconnected. Retrying tool:execute...`);
+                }
+            }
+        }
+
+        if (!ackReceived) {
+            throw new Error(
+                `Browser extension did not acknowledge the ${tool} request after ${MAX_ACK_ATTEMPTS} attempts. ` +
+                'The extension may need to be reloaded. Please refresh the extension and try again.'
+            );
+        }
+
+        // --- PHASE 2: Wait for actual tool result ---
+        return new Promise<any>((resolve, reject) => {
+            let currentTimeoutMs = executionTimeoutMs;
+            let timeoutHandle: ReturnType<typeof setTimeout>;
+            let settled = false;
+
+            const cleanup = () => {
+                settled = true;
+                clearTimeout(timeoutHandle);
+                this.toolResultEmitter.off(requestId, handleResult);
+                this.toolResultEmitter.off(`progress:${requestId}`, handleProgress);
+            };
+
+            const handleResult = (data: ToolExecutionResult) => {
+                if (settled) return;
+                console.log(`[ToolExecution] Result received for ${tool} (requestId: ${requestId})`);
+                cleanup();
+
+                if (data.status === 'success') {
+                    resolve(data.result);
+                } else {
+                    reject(new Error(data.error || 'Tool execution failed'));
                 }
             };
 
-            // 3. Listen for response from ANY client socket in the user's room
-            // Background worker emits tool:result on its own socket, so we must use io.on()
-            this.io.on(EVENTS_CLIENT.TOOL_RESULT as any, handleResult);
-
-            // 4. Timeout with proper cleanup
-            const TOOL_TIMEOUTS: Record<string, number> = {
-                'DOMReader': 120000,      // 2 mins
-                'Browser Interaction_Read Page Content': 120000,
-                'GmailScraper': 120000,   // 2 mins
-                'Screenshot': 60000,      // 1 min
-                'Browser Interaction_Take Screenshot': 60000,
-                'FormFiller': 60000,      // 1 min
-                'Browser Interaction_Fill Forms': 60000,
-                'SmartClick': 60000,      // 1 min
-                'Browser Interaction_Smart Click': 60000,
-                'Notifier': 10000         // 10 secs
+            // Progress heartbeats reset the timeout - if the tool is still working, let it work
+            const handleProgress = (data: { message?: string }) => {
+                if (settled) return;
+                console.log(`[ToolExecution] Progress heartbeat for ${tool}: ${data.message || 'still working'}`);
+                clearTimeout(timeoutHandle);
+                // Reset timeout with same duration
+                timeoutHandle = setTimeout(onTimeout, currentTimeoutMs);
             };
-            const timeoutMs = TOOL_TIMEOUTS[tool] || 30000;
-            
+
+            const onTimeout = () => {
+                if (settled) return;
+                console.error(`[ToolExecution] Timeout for ${tool} after ${currentTimeoutMs}ms (requestId: ${requestId})`);
+                cleanup();
+                reject(new Error(
+                    `Tool execution timed out after ${currentTimeoutMs / 1000}s (${tool}). ` +
+                    'The operation took too long to complete.'
+                ));
+            };
+
+            // Listen for result via EventEmitter (routed by handleToolResult)
+            this.toolResultEmitter.on(requestId, handleResult);
+            this.toolResultEmitter.on(`progress:${requestId}`, handleProgress);
+
+            // Start the execution timeout
+            timeoutHandle = setTimeout(onTimeout, currentTimeoutMs);
+        });
+    }
+
+    /**
+     * Wait for at least one socket to join a user's room (reconnection monitoring).
+     * Returns true if a socket connected within the timeout, false otherwise.
+     */
+    private waitForRoomConnection(userId: string, timeoutMs: number): Promise<boolean> {
+        return new Promise((resolve) => {
+            const roomName = `user:${userId}`;
+            const checkInterval = setInterval(() => {
+                const room = this.io?.sockets.adapter.rooms.get(roomName);
+                if (room && room.size > 0) {
+                    clearInterval(checkInterval);
+                    clearTimeout(timeoutHandle);
+                    resolve(true);
+                }
+            }, 1000); // Check every second
+
             const timeoutHandle = setTimeout(() => {
-                console.error(`[ToolExecution] Timeout for requestId: ${requestId} after ${timeoutMs}ms`);
-
-                // Remove listener to prevent memory leak
-                this.io?.off(EVENTS_CLIENT.TOOL_RESULT as any, handleResult);
-
-                reject(new Error(`Tool execution timed out after ${timeoutMs/1000}s (${tool})`));
+                clearInterval(checkInterval);
+                resolve(false);
             }, timeoutMs);
         });
     }

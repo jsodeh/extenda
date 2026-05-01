@@ -54,20 +54,45 @@ export class AIProcessor {
         const { action, content, context } = params;
         const modelConfig = executionContext?.modelConfig;
 
-        // Convert content to string if it's an object
-        const contentStr = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+        // Detect degraded/fallback content and inject transparency
+        let contentStr: string;
+        let transparencyPrefix = '';
+
+        if (typeof content === 'object' && content !== null) {
+            // Check for fallback data from content script failures
+            if (content.fallback && content.fallbackReason) {
+                transparencyPrefix = `IMPORTANT CONTEXT: ${content.fallbackReason}\n\n`;
+                contentStr = content.text || content.title || JSON.stringify(content);
+            }
+            // Check for soft-failed upstream step
+            else if (content._softFailed && content.fallbackContent) {
+                transparencyPrefix = '';
+                contentStr = content.fallbackContent;
+            }
+            else {
+                contentStr = JSON.stringify(content, null, 2);
+            }
+        } else {
+            contentStr = String(content || '');
+            // Also check if the string itself contains soft-fail markers from variable injection
+            if (contentStr.includes('[Data retrieval failed')) {
+                transparencyPrefix = 'Note: The data source encountered an issue. Be transparent with the user about what happened.\n\n';
+            }
+        }
+
+        const fullContent = transparencyPrefix + contentStr;
 
         switch (action) {
             case 'summarize':
-                const summary = await this.summarize(contentStr, 200, modelConfig);
+                const summary = await this.summarize(fullContent, 200, modelConfig);
                 return { summary, output: summary, payload: summary };
 
             case 'analyze':
-                const analysis = await this.analyze(contentStr, context, modelConfig);
+                const analysis = await this.analyze(fullContent, context, modelConfig);
                 return { analysis, output: analysis, payload: analysis };
 
             case 'categorize':
-                const category = await this.categorize(contentStr, undefined, modelConfig);
+                const category = await this.categorize(fullContent, undefined, modelConfig);
                 return { category, output: category, payload: category };
 
             default:

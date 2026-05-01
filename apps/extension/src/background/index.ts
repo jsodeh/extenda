@@ -23,8 +23,21 @@ async function executeContentScriptTool(tool: string, params: any): Promise<any>
         throw new Error('No active tab found');
     }
 
-    // Skip restricted URLs
+    // For DOMReader/page reading tools, provide graceful fallback instead of hard failure
+    const isDOMReaderTool = tool === 'DOMReader' || tool === 'Browser Interaction_Read Page Content';
+
+    // Check restricted URLs - return fallback with transparent reason for DOM tools
     if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('edge://') || tab.url?.startsWith('about:')) {
+        if (isDOMReaderTool) {
+            console.warn(`[Background] Restricted page detected, returning fallback for ${tool}`);
+            return {
+                title: tab.title || 'Unknown Page',
+                url: tab.url || '',
+                text: `Page: ${tab.title}\nURL: ${tab.url}`,
+                fallback: true,
+                fallbackReason: `This is a browser-internal page (${new URL(tab.url!).protocol}) that extensions cannot access. I could only retrieve the page title and URL.`
+            };
+        }
         throw new Error('Cannot execute tools on browser-restricted pages.');
     }
 
@@ -72,8 +85,33 @@ async function executeContentScriptTool(tool: string, params: any): Promise<any>
                 console.error('[Background] Injection failed:', injectError);
             }
 
+            // For DOM reader tools, return fallback instead of crashing
+            if (isDOMReaderTool) {
+                console.warn('[Background] Content script injection failed, returning tab metadata fallback');
+                return {
+                    title: tab.title || 'Unknown Page',
+                    url: tab.url || '',
+                    text: `Page: ${tab.title}\nURL: ${tab.url}`,
+                    fallback: true,
+                    fallbackReason: 'The page content script could not be loaded. The page may need to be refreshed, or it may block extension scripts. I could only retrieve the page title and URL.'
+                };
+            }
+
             throw new Error('Content script not loaded on this page. Try refreshing the page.');
         }
+
+        // Generic fallback for DOM reader tools on any other error
+        if (isDOMReaderTool) {
+            console.warn(`[Background] Content script error for ${tool}, returning fallback:`, error.message);
+            return {
+                title: tab.title || 'Unknown Page',
+                url: tab.url || '',
+                text: `Page: ${tab.title}\nURL: ${tab.url}`,
+                fallback: true,
+                fallbackReason: `Content extraction failed: ${error.message}. I could only retrieve the page title and URL.`
+            };
+        }
+
         throw error;
     }
 }
@@ -82,6 +120,16 @@ async function executeContentScriptTool(tool: string, params: any): Promise<any>
 const handleToolExecution = async (data: ToolExecutionRequest) => {
     console.log('[Background] Received tool execution request:', data);
     const { executionId, stepId, tool, params } = data;
+
+    // Immediately acknowledge receipt so the server knows we're alive and listening
+    // This enables the server's 2-phase timeout: ack phase (are you there?) + execution phase (do the work)
+    bgWsClient.emit('tool:ack', { executionId, stepId });
+
+    // Set up progress heartbeats for long-running tools
+    // This resets the server's timeout while we are still working
+    const progressInterval = setInterval(() => {
+        bgWsClient.emit('tool:progress', { executionId, stepId, message: 'Tool execution in progress...' });
+    }, 5000);
 
     try {
         let result;
@@ -127,6 +175,7 @@ const handleToolExecution = async (data: ToolExecutionRequest) => {
             throw new Error(`Unknown client tool: ${tool}`);
         }
 
+        clearInterval(progressInterval);
         bgWsClient.emit('tool:result', {
             executionId,
             stepId,
@@ -134,6 +183,7 @@ const handleToolExecution = async (data: ToolExecutionRequest) => {
             result
         });
     } catch (error: any) {
+        clearInterval(progressInterval);
         console.error('[Background] Tool execution failed:', error);
         bgWsClient.emit('tool:result', {
             executionId,

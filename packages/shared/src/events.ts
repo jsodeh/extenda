@@ -77,3 +77,14 @@ export interface ToolExecutionResult {
     error?: string;
 }
 
+export interface ToolAck {
+    executionId: string;
+    stepId: string;
+}
+
+export interface ToolProgress {
+    executionId: string;
+    stepId: string;
+    message?: string;
+}
+
