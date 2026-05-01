@@ -21,6 +21,10 @@ export class AgentOrchestrator {
     // EventEmitter-based tool result/ack routing (replaces broken io.on() pattern)
     private toolResultEmitter = new EventEmitter();
     private toolAckEmitter = new EventEmitter();
+    
+    // Result Cache for fast tools (requestId -> Result)
+    // Prevents lost events if tool completes before Phase 2 listener is ready
+    private toolResultCache: Map<string, ToolExecutionResult> = new Map();
 
     setServer(io: Server) {
         this.io = io;
@@ -33,6 +37,12 @@ export class AgentOrchestrator {
     handleToolResult(data: ToolExecutionResult) {
         const requestId = `${data.executionId}_${data.stepId}`;
         console.log(`[Orchestrator] Routing tool:result for requestId: ${requestId}`);
+        
+        // Cache the result in case the listener isn't ready yet
+        this.toolResultCache.set(requestId, data);
+        // Clear cache after 60 seconds to prevent leaks
+        setTimeout(() => this.toolResultCache.delete(requestId), 60000);
+
         // Emit on the main channel (Phase 2 listens here)
         this.toolResultEmitter.emit(requestId, data);
         // Also emit on the early channel (Phase 1 ack-wait listens here for fast results)
@@ -934,6 +944,10 @@ Do NOT return JSON. Return a natural language response.`;
             'Browser Interaction_Fill Forms': 30000,
             'SmartClick': 30000,
             'Browser Interaction_Smart Click': 30000,
+            'TabManager': 30000,
+            'Tab Management_Open New Tab': 30000,
+            'Tab Management_Switch Tabs': 30000,
+            'Tab Management_Close Tab': 30000,
             'Notifier': 10000
         };
         const executionTimeoutMs = TOOL_TIMEOUTS[tool] || 30000;
@@ -1045,6 +1059,15 @@ Do NOT return JSON. Return a natural language response.`;
         }
 
         // --- PHASE 2: Wait for actual tool result ---
+        // First check if result is already in cache (race condition fix)
+        const cachedResult = this.toolResultCache.get(requestId);
+        if (cachedResult) {
+            console.log(`[ToolExecution] Found cached result for ${tool} (fast execution)`);
+            this.toolResultCache.delete(requestId);
+            if (cachedResult.status === 'success') return cachedResult.result;
+            throw new Error(cachedResult.error || 'Tool execution failed');
+        }
+
         return new Promise<any>((resolve, reject) => {
             let currentTimeoutMs = executionTimeoutMs;
             let timeoutHandle: ReturnType<typeof setTimeout>;
