@@ -24,16 +24,16 @@ export function ChatSuggestions({ suggestions, onSelect }: ChatSuggestionsProps)
                     <button
                         key={s.id}
                         onClick={() => onSelect(s.prompt)}
-                        className="flex-shrink-0 w-32 snap-center group relative flex flex-col items-start p-2.5 bg-card hover:bg-muted/50 border border-border rounded-xl text-left transition-all hover:border-primary/30 active:scale-[0.97]"
+                        className="flex-shrink-0 w-28 snap-center group relative flex flex-col items-start p-2 bg-card hover:bg-muted/50 border border-border rounded-xl text-left transition-all hover:border-primary/30 active:scale-[0.97]"
                     >
-                        <div className={cn("p-1.5 rounded-lg mb-2 transition-colors", s.color)}>
-                            <s.icon className="w-3.5 h-3.5" />
+                        <div className={cn("p-1 rounded-lg mb-1.5 transition-colors", s.color)}>
+                            <s.icon className="w-3 h-3" />
                         </div>
                         
-                        <h3 className="text-[12px] font-bold text-foreground group-hover:text-primary transition-colors leading-tight">
+                        <h3 className="text-[11px] font-bold text-foreground group-hover:text-primary transition-colors leading-tight">
                             {s.title}
                         </h3>
-                        <p className="text-[10px] text-muted-foreground mt-1 line-clamp-2 leading-tight opacity-80">
+                        <p className="text-[9px] text-muted-foreground mt-0.5 line-clamp-2 leading-tight opacity-80">
                             {s.description}
                         </p>
                     </button>
@@ -45,7 +45,7 @@ export function ChatSuggestions({ suggestions, onSelect }: ChatSuggestionsProps)
                     <button
                         key={chip}
                         onClick={() => onSelect(chip)}
-                        className="px-2.5 py-1 rounded-full bg-muted/20 border border-border hover:border-primary/20 hover:bg-muted text-[10px] font-semibold text-muted-foreground transition-all"
+                        className="px-2 py-0.5 rounded-full bg-muted/20 border border-border hover:border-primary/20 hover:bg-muted text-[9px] font-semibold text-muted-foreground transition-all"
                     >
                         {chip}
                     </button>

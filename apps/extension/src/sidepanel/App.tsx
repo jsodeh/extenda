@@ -671,7 +671,7 @@ function AppContent() {
                     </div>
                 )}
 
-                <div className="flex flex-col min-h-full pb-24">
+                <div className="flex flex-col min-h-full pb-20">
                     <div className="flex-1 flex flex-col">
                         {messages.length === 0 ? (
                             <div className="flex-1 flex flex-col items-center justify-center text-center p-6 transition-all duration-1000">

@@ -290,23 +290,23 @@ export function InputArea({ onSend, disabled, sessionId, accessToken, onTranscri
                         }
                         disabled={disabled}
                         rows={1}
-                        className="w-full bg-transparent px-3 pt-2 pb-1.5 text-sm placeholder:text-muted-foreground focus:outline-none resize-none min-h-[44px] max-h-[150px] overflow-y-auto"
+                        className="w-full bg-transparent px-3 pt-1.5 pb-1 text-sm placeholder:text-muted-foreground focus:outline-none resize-none min-h-[38px] max-h-[150px] overflow-y-auto"
                     />
 
                     {/* Bottom Actions */}
-                    <div className="flex items-center justify-between px-2 pb-1.5">
+                    <div className="flex items-center justify-between px-2 pb-1">
                         {/* Left Actions */}
                         <div className="flex items-center gap-1">
                             <button
                                 type="button"
                                 onClick={() => fileInputRef.current?.click()}
                                 className={cn(
-                                    "p-1.5 rounded-lg hover:bg-muted transition-colors",
+                                    "p-1 rounded-lg hover:bg-muted transition-colors",
                                     selectedFiles.length > 0 ? "text-primary" : "text-muted-foreground"
                                 )}
                                 title="Attach files"
                             >
-                                <Paperclip size={16} />
+                                <Paperclip size={14} />
                             </button>
 
                             {/* Voice Mode Button */}
@@ -321,25 +321,25 @@ export function InputArea({ onSend, disabled, sessionId, accessToken, onTranscri
                                 }}
                                 disabled={!providerKeys.google}
                                 className={cn(
-                                    "p-1.5 rounded-lg transition-all duration-200",
+                                    "p-1 rounded-lg transition-all duration-200",
                                     !providerKeys.google ? "opacity-30 cursor-not-allowed text-muted-foreground" :
                                         voice.isActive ? "bg-primary text-primary-foreground" :
                                             "text-muted-foreground hover:bg-muted"
                                 )}
                                 title={!providerKeys.google ? "Configure Google API Key in Settings to enable voice" : voice.isActive ? "Voice mode active" : "Start voice mode"}
                             >
-                                <Mic size={16} />
+                                <Mic size={14} />
                             </button>
 
                             {selectedFiles.length > 0 && (
-                                <span className="text-xs text-muted-foreground ml-1">
+                                <span className="text-[10px] text-muted-foreground ml-1">
                                     {selectedFiles.length} file{selectedFiles.length > 1 ? 's' : ''}
                                 </span>
                             )}
                         </div>
 
                         {/* Middle/Right Actions */}
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1">
                             {/* BYOK Dropdowns */}
                             <ModeSelectDropdown value={mode} onChange={setMode} />
                             <ModelSelectDropdown 
@@ -353,13 +353,13 @@ export function InputArea({ onSend, disabled, sessionId, accessToken, onTranscri
                                 onClick={() => handleSubmit()}
                                 disabled={((!input.trim() && selectedFiles.length === 0) || disabled)}
                                 className={cn(
-                                    "p-1.5 rounded-lg transition-all duration-200 shadow-sm flex items-center justify-center shrink-0",
+                                    "p-1 rounded-lg transition-all duration-200 shadow-sm flex items-center justify-center shrink-0",
                                     (input.trim() || selectedFiles.length > 0)
                                         ? "bg-primary text-primary-foreground hover:bg-primary/90"
                                         : "bg-muted text-muted-foreground cursor-not-allowed opacity-50"
                                 )}
                             >
-                                <Send size={15} />
+                                <Send size={14} />
                             </button>
                         </div>
                     </div>
