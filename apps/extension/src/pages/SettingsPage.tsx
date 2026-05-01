@@ -204,7 +204,15 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
     const [promptStyle, setPromptStyle] = useState('professional');
     const [saved, setSaved] = useState(false);
     
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+    // Dynamically resolve API URL using the environment service
+    const [apiUrl, setApiUrl] = useState('');
+
+    useEffect(() => {
+        const resolveUrl = async () => {
+            const { getApiUrl } = await import('../lib/api');
+            setApiUrl(await getApiUrl());
+        };
+        resolveUrl();
 
     useEffect(() => {
         if (typeof chrome !== 'undefined' && chrome.storage) {
@@ -227,7 +235,8 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
             const token = localStorage.getItem('accessToken');
             if (!token) return;
             try {
-                const response = await fetch(`${API_URL}/api/preferences`, {
+                const url = apiUrl || (await (await import('../lib/api')).getApiUrl());
+                const response = await fetch(`${url}/api/preferences`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (response.ok) {
@@ -268,7 +277,8 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
         }
 
         try {
-            const response = await fetch(`${API_URL}/api/preferences`, {
+            const url = apiUrl || (await (await import('../lib/api')).getApiUrl());
+            const response = await fetch(`${url}/api/preferences`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',

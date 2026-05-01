@@ -35,8 +35,10 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
         } else {
             try {
                 const token = localStorage.getItem('accessToken');
-                const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-                await fetch(`${API_URL}/api/preferences`, {
+                const { getApiUrl } = await import('../lib/api');
+                const apiUrl = await getApiUrl();
+                
+                await fetch(`${apiUrl}/api/preferences`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
