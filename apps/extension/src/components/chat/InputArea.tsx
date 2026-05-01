@@ -43,8 +43,10 @@ export function InputArea({ onSend, disabled, sessionId, accessToken, onTranscri
             setTimeout(() => {
                 if (textareaRef.current) {
                     textareaRef.current.focus();
-                    textareaRef.current.style.height = 'auto';
-                    textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`;
+                    textareaRef.current.style.height = '38px';
+                    if (initialValue) {
+                        textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`;
+                    }
                 }
             }, 0);
         }
@@ -187,11 +189,17 @@ export function InputArea({ onSend, disabled, sessionId, accessToken, onTranscri
         });
     };
 
-    // Auto-resize textarea
+    // Auto-resize textarea - stabilized to prevent "random" growth
     useEffect(() => {
-        if (textareaRef.current) {
-            textareaRef.current.style.height = 'auto';
-            textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`;
+        const textarea = textareaRef.current;
+        if (!textarea) return;
+
+        // Reset to base height first to get accurate scrollHeight
+        textarea.style.height = '38px';
+        
+        if (input) {
+            const newHeight = Math.min(textarea.scrollHeight, 150);
+            textarea.style.height = `${newHeight}px`;
         }
     }, [input]);
 
@@ -199,7 +207,7 @@ export function InputArea({ onSend, disabled, sessionId, accessToken, onTranscri
         <div className="p-2 bg-background/80 backdrop-blur-md border-t border-border">
             <div className="max-w-md mx-auto">
                 <div className={cn(
-                    "relative flex flex-col rounded-xl border border-input bg-card shadow-sm transition-all",
+                    "relative flex flex-col rounded-xl border border-input bg-card shadow-sm",
                     "focus-within:border-primary focus-within:ring-1 focus-within:ring-primary",
                     voice.isActive && "border-primary ring-1 ring-primary"
                 )}>
@@ -290,7 +298,8 @@ export function InputArea({ onSend, disabled, sessionId, accessToken, onTranscri
                         }
                         disabled={disabled}
                         rows={1}
-                        className="w-full bg-transparent px-3 pt-1.5 pb-1 text-sm placeholder:text-muted-foreground focus:outline-none resize-none min-h-[38px] max-h-[150px] overflow-y-auto"
+                        style={{ height: '38px' }}
+                        className="w-full bg-transparent px-3 pt-1.5 pb-1 text-sm placeholder:text-muted-foreground focus:outline-none resize-none max-h-[150px] overflow-y-auto"
                     />
 
                     {/* Bottom Actions */}
