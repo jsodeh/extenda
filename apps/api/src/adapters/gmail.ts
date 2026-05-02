@@ -95,22 +95,28 @@ export class GmailAdapter extends BaseAdapter {
     actions = ACTIONS;
 
     async execute(actionName: string, params: any, context: any): Promise<any> {
-        // TODO: Retrieve tokens from context or DB using context.userId
-        // For now, we assume context.tokens contains { access_token, refresh_token }
-        // or we need a proper OAuth service.
+        // Audit environment variables - missing credentials cause 'invalid_request' during auto-refresh
+        const clientId = process.env.GOOGLE_CLIENT_ID;
+        const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+        const redirectUri = process.env.GOOGLE_REDIRECT_URI;
 
-        const auth = new google.auth.OAuth2(
-            process.env.GOOGLE_CLIENT_ID,
-            process.env.GOOGLE_CLIENT_SECRET,
-            process.env.GOOGLE_REDIRECT_URI
-        );
+        if (!clientId || !clientSecret) {
+            console.error('[GmailAdapter] CRITICAL: Missing Google Client Credentials in environment variables.');
+            throw new Error('Server Configuration Error: Google Client ID/Secret not found. Please check API environment variables.');
+        }
 
-        if (context.tokens) {
-            auth.setCredentials(context.tokens);
+        const auth = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+
+        if (context.tokens && context.tokens.access_token) {
+            // Ensure we pass tokens in the correct format for the SDK
+            auth.setCredentials({
+                access_token: context.tokens.access_token,
+                refresh_token: context.tokens.refresh_token,
+                token_type: 'Bearer'
+            });
         } else {
-            console.warn('No tokens provided in context for GmailAdapter');
-            // Allow execution to fail if no tokens (or handle error)
-            throw new Error('Authentication required: No tokens found for GmailAdapter');
+            console.warn('[GmailAdapter] No access token provided in context');
+            throw new Error('Authentication Error: No Google access token available for this session.');
         }
 
         const gmail = google.gmail({ version: 'v1', auth });
