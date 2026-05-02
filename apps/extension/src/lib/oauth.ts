@@ -3,7 +3,7 @@
  * Opens OAuth popup, listens for success message, closes popup
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+import { getApiUrl } from './api';
 
 export interface OAuthResult {
     success: boolean;
@@ -12,6 +12,8 @@ export interface OAuthResult {
 }
 
 export async function initiateOAuthFlow(provider: string): Promise<OAuthResult> {
+    const API_BASE_URL = await getApiUrl();
+
     return new Promise((resolve) => {
         const width = 600;
         const height = 700;
@@ -53,6 +55,7 @@ export async function initiateOAuthFlow(provider: string): Promise<OAuthResult> 
 }
 
 export async function fetchConnectedProviders(): Promise<string[]> {
+    const API_BASE_URL = await getApiUrl();
     try {
         const { accessToken } = await chrome.storage.local.get(['accessToken']);
         const response = await fetch(`${API_BASE_URL}/oauth/status`, {
@@ -70,6 +73,7 @@ export async function fetchConnectedProviders(): Promise<string[]> {
 }
 
 export async function disconnectProvider(provider: string): Promise<boolean> {
+    const API_BASE_URL = await getApiUrl();
     try {
         const response = await fetch(`${API_BASE_URL}/oauth/disconnect/${provider}`, {
             method: 'DELETE'

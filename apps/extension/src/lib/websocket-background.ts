@@ -1,4 +1,5 @@
 import { io, Socket } from 'socket.io-client';
+import { getApiUrl } from './api';
 
 /**
  * Dedicated WebSocket client for the background service worker.
@@ -22,18 +23,9 @@ class BackgroundWebSocketClient {
         }
 
         this.currentToken = token;
-
-        // Read the user's preferred API URL from storage (set by Settings page)
-        const defaultUrl = 'https://extenda-pxa6.onrender.com';
-        let apiUrl = defaultUrl;
-        try {
-            const stored = await chrome.storage.local.get('extenda_backend_url');
-            if (stored.extenda_backend_url) {
-                apiUrl = stored.extenda_backend_url;
-            }
-        } catch (e) {
-            console.warn('[BgWS] Could not read apiUrl from storage, using default');
-        }
+        
+        // Use the centralized environment service to get the correct API URL
+        const apiUrl = await getApiUrl();
 
         console.log(`[BgWS] Connecting to API (websocket-only): ${apiUrl}...`);
         this.socket = io(apiUrl, {

@@ -39,7 +39,8 @@ export default function TemplatesPage({ onBack }: TemplatesPageProps) {
 
     const fetchTemplates = async () => {
         try {
-            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+            const { getApiUrl } = await import('../lib/api');
+            const API_URL = await getApiUrl();
             const response = await fetch(`${API_URL}/api/templates`);
             const data = await response.json();
             setTemplates(data.templates || []);
@@ -64,7 +65,8 @@ export default function TemplatesPage({ onBack }: TemplatesPageProps) {
         setExecuting(true);
 
         try {
-            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+            const { getApiUrl } = await import('../lib/api');
+            const API_URL = await getApiUrl();
             const response = await fetch(`${API_URL}/api/templates/execute`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

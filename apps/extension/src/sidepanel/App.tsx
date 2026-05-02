@@ -496,7 +496,7 @@ function AppContent() {
                 const formData = new FormData();
                 files.forEach(file => formData.append('files', file));
 
-                const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+                const API_URL = await getApiUrl();
                 const uploadRes = await fetch(`${API_URL}/api/knowledge/process-files`, {
                     method: 'POST',
                     headers: {

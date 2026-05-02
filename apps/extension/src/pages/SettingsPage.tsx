@@ -213,6 +213,7 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
             setApiUrl(await getApiUrl());
         };
         resolveUrl();
+    }, []);
 
     useEffect(() => {
         if (typeof chrome !== 'undefined' && chrome.storage) {
