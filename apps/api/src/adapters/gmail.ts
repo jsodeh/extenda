@@ -117,10 +117,22 @@ export class GmailAdapter extends BaseAdapter {
 
         switch (actionName) {
             case 'list_emails':
+                // Sanitize parameters to prevent invalid_request
+                const maxResults = typeof params.maxResults === 'number' 
+                    ? params.maxResults 
+                    : parseInt(params.maxResults) || 10;
+                
+                // Ensure q is a string and not empty or "null"
+                const query = (typeof params.q === 'string' && params.q.trim().length > 0 && params.q !== 'null') 
+                    ? params.q 
+                    : undefined;
+
+                console.log(`[GmailAdapter] Listing emails: maxResults=${maxResults}, q=${query || 'none'}`);
+
                 const listRes = await gmail.users.messages.list({
                     userId: 'me',
-                    maxResults: params.maxResults || 10,
-                    q: params.q
+                    maxResults: Math.min(Math.max(maxResults, 1), 100),
+                    q: query
                 });
 
                 const messages = listRes.data.messages || [];
