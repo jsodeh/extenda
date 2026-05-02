@@ -132,7 +132,7 @@ export class GmailAdapter extends BaseAdapter {
                 const listRes = await gmail.users.messages.list({
                     userId: 'me',
                     maxResults: Math.min(Math.max(maxResults, 1), 100),
-                    q: query
+                    ...(query ? { q: query } : {})
                 });
 
                 const messages = listRes.data.messages || [];
@@ -172,8 +172,12 @@ export class GmailAdapter extends BaseAdapter {
                 return {
                     summary: `Found ${listRes.data.resultSizeEstimate || 0} emails. Retrieved details for ${validMessages.length}.`,
                     emails: validMessages,
+                    messages: validMessages,
                     // Alias for LLM friendliness - matches the hint in orchestrator
-                    output: { emails: validMessages }
+                    output: { 
+                        emails: validMessages,
+                        messages: validMessages 
+                    }
                 };
 
             case 'send_email':
