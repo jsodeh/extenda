@@ -593,7 +593,7 @@ User Email: ${user.email}` : '';
                         // This lets downstream AIProcessor steps run with a transparent error message
                         const DATA_FETCH_TOOLS = [
                             'DOMReader', 'Browser Interaction_Read Page Content',
-                            'GmailScraper', 'FormFiller', 'Browser Interaction_Fill Forms'
+                            'GmailScraper', 'GmailAdapter', 'FormFiller', 'Browser Interaction_Fill Forms'
                         ];
                         const toolName = step.tool?.trim() || '';
                         if (DATA_FETCH_TOOLS.includes(toolName) || toolName.toLowerCase().includes('read page')) {
