@@ -655,31 +655,65 @@ User Email: ${user.email}` : '';
                 // Generate user-friendly summary of the workflow results BEFORE emitting complete
                 let richSummary: string | null = null;
                 try {
-                    const lastStepId = Array.from(stepResults.keys()).pop();
-                    const lastResult = lastStepId ? stepResults.get(lastStepId) : null;
+                    // Find the most "meaningful" result to summarize
+                    // Priority: Last AIProcessor result > Last non-utility result > Absolute last result
+                    const UTILITY_TOOLS = ['Notifier', 'TabManager', 'Screenshot', 'SmartClick', 'System Utilities_Send Notifications'];
+                    const resultsArray = Array.from(stepResults.entries());
+                    const steps = workflow.definition.steps as WorkflowStep[];
+                    
+                    let bestStepId: string | undefined;
+                    let bestResult: any;
 
-                    if (lastResult && execution.context?.sessionId) {
-                        // Check if the last step was an AIProcessor which already returns a nice summarized payload
-                        if (typeof lastResult === 'object' && lastResult !== null && (lastResult.summary || lastResult.output || lastResult.payload)) {
-                            richSummary = lastResult.summary || lastResult.output || lastResult.payload;
+                    // 1. Try to find the last AIProcessor step
+                    for (let i = resultsArray.length - 1; i >= 0; i--) {
+                        const [id, res] = resultsArray[i];
+                        const step = steps.find(s => s.id === id);
+                        if (step?.tool === 'AIProcessor') {
+                            bestStepId = id;
+                            bestResult = res;
+                            break;
+                        }
+                    }
+
+                    // 2. If no AIProcessor, find the last non-utility step
+                    if (!bestStepId) {
+                        for (let i = resultsArray.length - 1; i >= 0; i--) {
+                            const [id, res] = resultsArray[i];
+                            const step = steps.find(s => s.id === id);
+                            const toolName = step?.tool || '';
+                            if (!UTILITY_TOOLS.includes(toolName) && !toolName.startsWith('Tab Management_')) {
+                                bestStepId = id;
+                                bestResult = res;
+                                break;
+                            }
+                        }
+                    }
+
+                    // 3. Fallback to absolute last result
+                    if (!bestStepId && resultsArray.length > 0) {
+                        [bestStepId, bestResult] = resultsArray[resultsArray.length - 1];
+                    }
+
+                    if (bestResult && execution.context?.sessionId) {
+                        // Check if it already has a summarized payload
+                        if (typeof bestResult === 'object' && bestResult !== null && (bestResult.summary || bestResult.output || bestResult.payload)) {
+                            richSummary = bestResult.summary || bestResult.output || bestResult.payload;
                             if (typeof richSummary !== 'string') richSummary = JSON.stringify(richSummary);
                         } else {
-                            const resultStr = typeof lastResult === 'string'
-                                ? lastResult
-                                : JSON.stringify(lastResult, null, 2);
+                            const resultStr = typeof bestResult === 'string'
+                                ? bestResult
+                                : JSON.stringify(bestResult, null, 2);
 
                             // Generate a user-friendly summary using AI
                             const summaryPrompt = `You are a helpful assistant. The user asked: "${workflow.intent}"
 
-The workflow completed successfully with this result:
-${resultStr.slice(0, 2000)}
+The workflow completed successfully. Here is the key result from the most relevant step:
+${resultStr.slice(0, 3000)}
 
 Generate a brief, friendly, conversational response summarizing the result for the user. Be concise but informative. 
-- If it's a list of emails, mention subjects, senders and key details.
-- If it's a list of files, mention how many were found and list their names briefly.
-- If it's an email action, confirm it was sent.
-- If it's a form, provide the link.
-Do NOT return JSON. Return a natural language response.`;
+- If it's a list, summarize the key items.
+- If it's a confirmation, tell the user it was done successfully.
+- Do NOT return JSON. Return a natural language response.`;
 
                             richSummary = await generateText(summaryPrompt, modelConfig);
                         }
@@ -690,17 +724,34 @@ Do NOT return JSON. Return a natural language response.`;
                         // Emit as a standard chat response so the user definitely receives it in their message feed
                         this.io?.to(execution.context.sessionId).emit('chat:response', {
                             message: richSummary,
+                            sessionId: execution.context.sessionId,
+                            workflowId: execution.workflowId // Help frontend associate it
+                        });
+                    } else if (execution.context?.sessionId) {
+                        // Fallback if no result found at all
+                        const fallbackMsg = "Workflow completed successfully.";
+                        await this.addMessage(execution.context.sessionId, 'assistant', fallbackMsg);
+                        this.io?.to(execution.context.sessionId).emit('chat:response', {
+                            message: fallbackMsg,
                             sessionId: execution.context.sessionId
                         });
                     }
                 } catch (summaryError) {
                     console.error('Failed to generate workflow summary:', summaryError);
-                    // Fall back to workflow complete without summary
+                    // Critical fallback to ensure user gets SOMETHING
+                    if (execution.context?.sessionId) {
+                        const errorFallback = "Workflow completed, but I encountered an error generating the final summary. Please check the step results above.";
+                        this.io?.to(execution.context.sessionId).emit('chat:response', {
+                            message: errorFallback,
+                            sessionId: execution.context.sessionId
+                        });
+                    }
                 }
 
-                // Emit complete (frontend no longer generates a summary message from this)
+                // Emit complete with summary attached for secondary UI elements
                 this.io?.emit(EVENTS_SERVER.WORKFLOW_COMPLETE, {
-                    workflowId: execution.workflowId
+                    workflowId: execution.workflowId,
+                    summary: richSummary
                 });
             }
         } catch (error) {
