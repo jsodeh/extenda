@@ -127,13 +127,27 @@ export class GmailAdapter extends BaseAdapter {
                     ? params.q 
                     : undefined;
 
-                console.log(`[GmailAdapter] Listing emails: maxResults=${maxResults}, q=${query || 'none'}`);
-
-                const listRes = await gmail.users.messages.list({
+                const listParams: any = {
                     userId: 'me',
-                    maxResults: Math.min(Math.max(maxResults, 1), 100),
-                    ...(query ? { q: query } : {})
-                });
+                    maxResults: Math.min(Math.max(Number(maxResults) || 1, 1), 100)
+                };
+                if (query && query.length > 0) listParams.q = query;
+
+                console.log('[GmailAdapter] Full Request Body:', JSON.stringify(listParams));
+
+                let listRes;
+                try {
+                    // Explicitly bind the auth to ensure no context loss
+                    listRes = await gmail.users.messages.list(listParams);
+                } catch (apiError: any) {
+                    console.error('[GmailAdapter] Google API Error:', {
+                        message: apiError.message,
+                        status: apiError.status,
+                        errors: apiError.response?.data?.error || apiError.errors,
+                        code: apiError.code
+                    });
+                    throw new Error(`Gmail API Error: ${apiError.message || 'invalid_request'}`);
+                }
 
                 const messages = listRes.data.messages || [];
 
@@ -275,6 +289,13 @@ export class GmailAdapter extends BaseAdapter {
                     '',
                     params.body
                 ].join('\n');
+
+                // Paranoid check: ensure context.tokens exists before proceeding
+                if (!context.tokens) {
+                    throw new Error('Security Error: No tokens available for draft creation');
+                }
+
+
 
                 const encodedDraft = Buffer.from(draftRaw)
                     .toString('base64')
