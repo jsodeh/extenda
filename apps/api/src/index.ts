@@ -299,6 +299,22 @@ RULES:
             const workflowIntent = quickClassification.workflowIntent || data.intent;
             const workflow = await orchestrator.plan(workflowIntent, user, sessionId, data.modelConfig);
 
+            // TIER 3.5: Direct Response Check
+            // If the AI determined it can answer directly without any steps, we skip the workflow
+            if (workflow.definition.directResponse && (!workflow.definition.steps || workflow.definition.steps.length === 0)) {
+                console.log('[DEBUG] AI provided direct response, skipping workflow execution');
+                
+                // Add assistant response to history
+                await orchestrator.addMessage(sessionId, 'assistant', workflow.definition.directResponse);
+
+                // Emit response
+                socket.emit('chat:response', { message: workflow.definition.directResponse, sessionId });
+                socket.emit('agent:status', { state: 'idle', message: 'Ready' });
+
+                clearTimeout(timeoutHandle);
+                return; // DONE
+            }
+
             // Add workflow plan to history with steps in metadata
             await orchestrator.addMessage(sessionId, 'assistant', `Created workflow with ${workflow.definition.steps.length} steps`, {
                 workflowId: workflow.id,

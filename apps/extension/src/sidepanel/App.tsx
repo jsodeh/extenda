@@ -408,19 +408,6 @@ function AppContent() {
                         return msg;
                     });
 
-                    // Use the backend's AI-generated rich summary if available
-                    let summaryText = data?.summary || null;
-
-                    // Only add message if we have a real backend summary
-                    if (summaryText) {
-                        return [...updated, {
-                            id: Date.now().toString(),
-                            role: 'assistant' as const,
-                            content: summaryText,
-                            timestamp: new Date()
-                        }];
-                    }
-
                     return updated; // No empty messages
                 });
             }

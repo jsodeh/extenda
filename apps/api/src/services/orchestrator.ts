@@ -237,7 +237,7 @@ User Email: ${user.email}` : '';
          - Summarizing or processing text
          - Browser navigation or UI interactions
       7. Return ONLY valid JSON matching this structure:
-      {
+        "directResponse": "If the request can be answered immediately without tools (e.g. greetings, general knowledge, time calculation), provide the full answer here and leave 'steps' empty.",
         "steps": [
           { 
             "id": "step-1", 
@@ -305,7 +305,8 @@ User Email: ${user.email}` : '';
                 intent,
                 definition: {
                     steps: planData.steps || [],
-                    requiresApproval: planData.requiresApproval ?? false
+                    requiresApproval: planData.requiresApproval ?? false,
+                    directResponse: planData.directResponse
                 },
                 isTemplate: false,
                 isPublic: false,
@@ -477,7 +478,9 @@ User Email: ${user.email}` : '';
         }
     }
 
-    private async runWorkflowLoop(execution: Execution, workflow: Workflow, approvedStepId?: string, modelConfig?: ModelConfig) {
+    private emittedSummaries = new Set<string>();
+ 
+     private async runWorkflowLoop(execution: Execution, workflow: Workflow, approvedStepId?: string, modelConfig?: ModelConfig) {
         try {
             // Resolve dependencies and get execution batches
             const steps = workflow.definition.steps as WorkflowStep[];
@@ -650,13 +653,18 @@ User Email: ${user.email}` : '';
                 }
             }
 
+            // Prevention: Only emit one final summary per execution session
+            if (this.emittedSummaries.has(execution.id)) {
+                console.log(`[Orchestrator] Summary already emitted for execution ${execution.id}, skipping duplicate.`);
+                return;
+            }
+
             // Only emit complete if no failures
             if (failedSteps.size === 0) {
                 // Generate user-friendly summary of the workflow results BEFORE emitting complete
                 let richSummary: string | null = null;
                 try {
                     // Find the most "meaningful" result to summarize
-                    // Priority: Last AIProcessor result > Last non-utility result > Absolute last result
                     const UTILITY_TOOLS = ['Notifier', 'TabManager', 'Screenshot', 'SmartClick', 'System Utilities_Send Notifications'];
                     const resultsArray = Array.from(stepResults.entries());
                     const steps = workflow.definition.steps as WorkflowStep[];
@@ -699,6 +707,26 @@ User Email: ${user.email}` : '';
                         if (typeof bestResult === 'object' && bestResult !== null && (bestResult.summary || bestResult.output || bestResult.payload)) {
                             richSummary = bestResult.summary || bestResult.output || bestResult.payload;
                             if (typeof richSummary !== 'string') richSummary = JSON.stringify(richSummary);
+                        }
+                        
+                        // 4. LAST RESORT: Check if the best result was from a utility tool with a 'message' parameter
+                        if (!richSummary && bestStepId) {
+                            const step = steps.find(s => s.id === bestStepId);
+                            if (step && UTILITY_TOOLS.includes(step.tool) && step.params?.message) {
+                                richSummary = step.params.message;
+                                console.log(`[Orchestrator] Using utility message fallback for summary: ${richSummary}`);
+                            }
+                        }
+
+                        if (richSummary) {
+                            // Persist and emit existing summary
+                            await this.addMessage(execution.context.sessionId, 'assistant', richSummary!);
+                            this.emittedSummaries.add(execution.id);
+                            this.io?.to(execution.context.sessionId).emit('chat:response', {
+                                message: richSummary,
+                                sessionId: execution.context.sessionId,
+                                workflowId: execution.workflowId
+                            });
                         } else {
                             const resultStr = typeof bestResult === 'string'
                                 ? bestResult
@@ -716,20 +744,21 @@ Generate a brief, friendly, conversational response summarizing the result for t
 - Do NOT return JSON. Return a natural language response.`;
 
                             richSummary = await generateText(summaryPrompt, modelConfig);
+                            
+                            if (richSummary) {
+                                await this.addMessage(execution.context.sessionId, 'assistant', richSummary!);
+                                this.emittedSummaries.add(execution.id);
+                                this.io?.to(execution.context.sessionId).emit('chat:response', {
+                                    message: richSummary,
+                                    sessionId: execution.context.sessionId,
+                                    workflowId: execution.workflowId
+                                });
+                            }
                         }
-
-                        // Persist the summary to chat history
-                        await this.addMessage(execution.context.sessionId, 'assistant', richSummary!);
-                        
-                        // Emit as a standard chat response so the user definitely receives it in their message feed
-                        this.io?.to(execution.context.sessionId).emit('chat:response', {
-                            message: richSummary,
-                            sessionId: execution.context.sessionId,
-                            workflowId: execution.workflowId // Help frontend associate it
-                        });
                     } else if (execution.context?.sessionId) {
                         // Fallback if no result found at all
                         const fallbackMsg = "Workflow completed successfully.";
+                        this.emittedSummaries.add(execution.id);
                         await this.addMessage(execution.context.sessionId, 'assistant', fallbackMsg);
                         this.io?.to(execution.context.sessionId).emit('chat:response', {
                             message: fallbackMsg,
@@ -738,9 +767,9 @@ Generate a brief, friendly, conversational response summarizing the result for t
                     }
                 } catch (summaryError) {
                     console.error('Failed to generate workflow summary:', summaryError);
-                    // Critical fallback to ensure user gets SOMETHING
                     if (execution.context?.sessionId) {
                         const errorFallback = "Workflow completed, but I encountered an error generating the final summary. Please check the step results above.";
+                        this.emittedSummaries.add(execution.id);
                         this.io?.to(execution.context.sessionId).emit('chat:response', {
                             message: errorFallback,
                             sessionId: execution.context.sessionId
@@ -748,10 +777,9 @@ Generate a brief, friendly, conversational response summarizing the result for t
                     }
                 }
 
-                // Emit complete with summary attached for secondary UI elements
+                // Emit complete for secondary UI elements
                 this.io?.emit(EVENTS_SERVER.WORKFLOW_COMPLETE, {
-                    workflowId: execution.workflowId,
-                    summary: richSummary
+                    workflowId: execution.workflowId
                 });
             }
         } catch (error) {
