@@ -712,7 +712,7 @@ User Email: ${user.email}` : '';
                         // 4. LAST RESORT: Check if the best result was from a utility tool with a 'message' parameter
                         if (!richSummary && bestStepId) {
                             const step = steps.find(s => s.id === bestStepId);
-                            if (step && UTILITY_TOOLS.includes(step.tool) && step.params?.message) {
+                            if (step && step.tool && UTILITY_TOOLS.includes(step.tool) && step.params?.message) {
                                 richSummary = step.params.message;
                                 console.log(`[Orchestrator] Using utility message fallback for summary: ${richSummary}`);
                             }

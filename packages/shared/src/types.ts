@@ -41,6 +41,7 @@ export interface WorkflowDefinition {
     steps: Step[];
     dependencies?: string[]; // Simplified dependency tracking
     requiresApproval?: boolean;
+    directResponse?: string; // Immediate answer if no tools are needed
 }
 
 export type WorkflowStep = Step;
