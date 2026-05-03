@@ -220,6 +220,7 @@ User Email: ${user.email}` : '';
          - DO NOT use pipes or filters (e.g. "| map" or "| join" are NOT supported).
          - The variable replacement only supports direct JSON or string injection.
       4. If a tool matches (e.g., "summary of emails" -> "list_emails"), you MUST use it.
+         - FAVOR BULK ACTIONS: Tools like 'list_emails' return detailed metadata (snippets, subjects). DO NOT generate individual 'get_message' steps for each item unless the user specifically asks for full-body analysis of every item. Efficiency is key.
       5. UX GUIDELINES:
          - For SEARCH/RETRIEVAL tasks (e.g. "summarize emails", "check calendar"):
            - ALWAYS end with an 'AIProcessor' step (action="summarize" or "analyze") to consolidate findings into a single, natural language summary.
@@ -932,14 +933,6 @@ Generate a brief, friendly, conversational response summarizing the result for t
                 );
 
                 this.io?.to(execution.context.sessionId).emit('chat:response', {
-                    sessionId: execution.context.sessionId,
-                    message: messageContent,
-                    role: 'assistant',
-                    timestamp: new Date(),
-                    metadata: { stepId: step.id, type: 'step_error' }
-                });
-
-                this.io?.emit('chat:response', {
                     sessionId: execution.context.sessionId,
                     message: messageContent,
                     role: 'assistant',

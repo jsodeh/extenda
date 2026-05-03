@@ -419,12 +419,24 @@ function AppContent() {
 
         wsClient.on('chat:response', (data: any) => {
             setAgentStatus(null);
-            addMessage({
-                id: Date.now().toString(),
-                role: 'assistant',
-                content: data.message,
-                timestamp: new Date()
+            
+            // Deduplication: Don't add if identical to last message in short window
+            setMessages(prev => {
+                if (prev.length > 0) {
+                    const lastMsg = prev[prev.length - 1];
+                    const isDuplicate = lastMsg.content === data.message && 
+                                       (Date.now() - new Date(lastMsg.timestamp).getTime() < 1500);
+                    if (isDuplicate) return prev;
+                }
+                
+                return [...prev, {
+                    id: Date.now().toString(),
+                    role: 'assistant',
+                    content: data.message,
+                    timestamp: new Date()
+                }];
             });
+
             if (data.sessionId && !sessionIdRef.current) {
                 setCurrentSessionId(data.sessionId);
             }
@@ -432,14 +444,25 @@ function AppContent() {
 
         wsClient.on('workflow:error', (data: any) => {
             setAgentStatus(null);
-            // Keep the workflow state for inspection if needed, or clear it
-            // Error highlighting handled by ChatMessage
-            addMessage({
-                id: Date.now().toString(),
-                role: 'system',
-                content: typeof data.error === 'object' ? JSON.stringify(data) : `Error: ${data.error}`,
-                timestamp: new Date(),
-                error: true
+            
+            const errorMsg = typeof data.error === 'object' ? JSON.stringify(data.error) : data.error;
+            
+            // Deduplication: Don't add if identical to last message in short window
+            setMessages(prev => {
+                if (prev.length > 0) {
+                    const lastMsg = prev[prev.length - 1];
+                    const isDuplicate = (lastMsg.content === errorMsg || lastMsg.content.includes(errorMsg)) && 
+                                       (Date.now() - new Date(lastMsg.timestamp).getTime() < 1500);
+                    if (isDuplicate) return prev;
+                }
+
+                return [...prev, {
+                    id: Date.now().toString(),
+                    role: 'system',
+                    content: errorMsg,
+                    timestamp: new Date(),
+                    error: true
+                }];
             });
         });
 

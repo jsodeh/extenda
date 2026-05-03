@@ -35,6 +35,16 @@ console.log('Loading .env from:', envPath);
 console.log('Environment:', process.env.NODE_ENV);
 console.log('PORT:', process.env.PORT);
 
+// Security-Safe Diagnostic Probe
+const envKeys = Object.keys(process.env).filter(k => k.includes('GOOGLE') || k.includes('CLIENT'));
+console.log('[System] Startup Diagnostic Env Probe - Found Keys:', envKeys.join(', '));
+if (process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_AUTH_CLIENT_ID) {
+    console.log('[System] Credentials Status: GOOGLE_CLIENT_ID present? ' + (!!process.env.GOOGLE_CLIENT_ID) + 
+                ', GOOGLE_AUTH_CLIENT_ID present? ' + (!!process.env.GOOGLE_AUTH_CLIENT_ID));
+} else {
+    console.warn('[System] CRITICAL: No Google Client IDs found in process.env at startup.');
+}
+
 const port = Number(process.env.PORT) || 3000;
 
 app.use('*', cors({

@@ -7,7 +7,7 @@ const ACTIONS: AdapterAction[] = [
     {
         id: 'list_emails',
         name: 'list_emails',
-        description: 'List emails from Gmail inbox',
+        description: 'List emails from Gmail inbox. Returns a list of messages containing id, snippet, subject, from, and date. Use this for general summaries without needing to fetch individual messages.',
         parameters: {
             type: 'object',
             properties: {
@@ -100,6 +100,12 @@ export class GmailAdapter extends BaseAdapter {
         const clientSecret = process.env.GOOGLE_CLIENT_SECRET || process.env.GOOGLE_AUTH_CLIENT_SECRET;
         const redirectUri = process.env.GOOGLE_REDIRECT_URI || process.env.GOOGLE_AUTH_REDIRECT_URI;
         const authRedirectUri = process.env.GOOGLE_AUTH_REDIRECT_URI;
+
+        // Security-Safe Diagnostic Probe: Log keys only (not values) to reveal Render config
+        const envKeys = Object.keys(process.env).filter(k => k.includes('GOOGLE'));
+        console.log('[GmailAdapter] Diagnostic Env Probe - Found Keys:', envKeys.join(', '));
+        console.log('[GmailAdapter] Target Keys: GOOGLE_CLIENT_ID=' + (!!process.env.GOOGLE_CLIENT_ID) + 
+                    ', GOOGLE_AUTH_CLIENT_ID=' + (!!process.env.GOOGLE_AUTH_CLIENT_ID));
 
         if (!clientId || !clientSecret) {
             console.error('[GmailAdapter] CRITICAL: Missing Google Client Credentials. Checked both GOOGLE_CLIENT_ID and GOOGLE_AUTH_CLIENT_ID.');
