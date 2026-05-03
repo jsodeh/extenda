@@ -178,7 +178,7 @@ export class OAuthManager {
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: new URLSearchParams({
                     client_id: process.env.GOOGLE_CLIENT_ID || '',
-                    client_secret: process.env.GOOGLE_CLIENT_SECRET || '',
+                    client_secret: process.env.GOOGLE_AUTH_CLIENT_SECRET || '',
                     refresh_token: credentials.refreshToken!,
                     grant_type: 'refresh_token'
                 }),

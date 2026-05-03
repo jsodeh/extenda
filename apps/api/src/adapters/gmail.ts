@@ -95,24 +95,17 @@ export class GmailAdapter extends BaseAdapter {
     actions = ACTIONS;
 
     async execute(actionName: string, params: any, context: any): Promise<any> {
-        // Support both GOOGLE_CLIENT_ID and GOOGLE_AUTH_CLIENT_ID variants
-        const clientId = process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_AUTH_CLIENT_ID;
-        const clientSecret = process.env.GOOGLE_CLIENT_SECRET || process.env.GOOGLE_AUTH_CLIENT_SECRET;
-        const redirectUri = process.env.GOOGLE_REDIRECT_URI || process.env.GOOGLE_AUTH_REDIRECT_URI;
-        const authRedirectUri = process.env.GOOGLE_AUTH_REDIRECT_URI;
-
-        // Security-Safe Diagnostic Probe: Log keys only (not values) to reveal Render config
-        const envKeys = Object.keys(process.env).filter(k => k.includes('GOOGLE'));
-        console.log('[GmailAdapter] Diagnostic Env Probe - Found Keys:', envKeys.join(', '));
-        console.log('[GmailAdapter] Target Keys: GOOGLE_CLIENT_ID=' + (!!process.env.GOOGLE_CLIENT_ID) + 
-                    ', GOOGLE_AUTH_CLIENT_ID=' + (!!process.env.GOOGLE_AUTH_CLIENT_ID));
+        // Unified Standard: Correlate with Render environment variables
+        const clientId = process.env.GOOGLE_CLIENT_ID;
+        const clientSecret = process.env.GOOGLE_AUTH_CLIENT_SECRET;
+        const redirectUri = process.env.GOOGLE_AUTH_REDIRECT_URI;
 
         if (!clientId || !clientSecret) {
-            console.error('[GmailAdapter] CRITICAL: Missing Google Client Credentials. Checked both GOOGLE_CLIENT_ID and GOOGLE_AUTH_CLIENT_ID.');
-            throw new Error('Server Configuration Error: Google Client ID/Secret not found. Please ensure GOOGLE_CLIENT_ID/SECRET are set on Render.');
+            console.error('[GmailAdapter] CRITICAL: Missing Google Credentials (GOOGLE_CLIENT_ID or GOOGLE_AUTH_CLIENT_SECRET)');
+            throw new Error('Server Configuration Error: Google Credentials not found. Please ensure GOOGLE_CLIENT_ID and GOOGLE_AUTH_CLIENT_SECRET are set on Render.');
         }
 
-        const auth = new google.auth.OAuth2(clientId, clientSecret, redirectUri || authRedirectUri);
+        const auth = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 
         if (context.tokens && context.tokens.access_token) {
             // Ensure we pass tokens in the correct format for the SDK

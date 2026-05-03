@@ -22,14 +22,14 @@ const OAUTH_PROVIDERS: Record<string, OAuthProvider> = {
         authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
         tokenUrl: 'https://oauth2.googleapis.com/token',
         clientId: process.env.GOOGLE_CLIENT_ID || '',
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+        clientSecret: process.env.GOOGLE_AUTH_CLIENT_SECRET || '',
         scopes: [
             'https://www.googleapis.com/auth/gmail.readonly',
             'https://www.googleapis.com/auth/gmail.send',
             'https://www.googleapis.com/auth/calendar',
             'https://www.googleapis.com/auth/drive.file'
         ],
-        redirectUri: process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/oauth/callback/google'
+        redirectUri: process.env.GOOGLE_AUTH_REDIRECT_URI || 'http://localhost:3000/oauth/callback/google'
     },
     slack: {
         authUrl: 'https://slack.com/oauth/v2/authorize',

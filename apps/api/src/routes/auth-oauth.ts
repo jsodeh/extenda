@@ -24,8 +24,8 @@ function getOAuthProviders(): Record<string, OAuthConfig> {
             authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
             tokenUrl: 'https://oauth2.googleapis.com/token',
             userInfoUrl: 'https://www.googleapis.com/oauth2/v2/userinfo',
-            clientId: process.env.GOOGLE_AUTH_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || '',
-            clientSecret: process.env.GOOGLE_AUTH_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || '',
+            clientId: process.env.GOOGLE_CLIENT_ID || '',
+            clientSecret: process.env.GOOGLE_AUTH_CLIENT_SECRET || '',
             scopes: [
                 'openid',
                 'email',
