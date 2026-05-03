@@ -95,17 +95,18 @@ export class GmailAdapter extends BaseAdapter {
     actions = ACTIONS;
 
     async execute(actionName: string, params: any, context: any): Promise<any> {
-        // Audit environment variables - missing credentials cause 'invalid_request' during auto-refresh
-        const clientId = process.env.GOOGLE_CLIENT_ID;
-        const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-        const redirectUri = process.env.GOOGLE_REDIRECT_URI;
+        // Support both GOOGLE_CLIENT_ID and GOOGLE_AUTH_CLIENT_ID variants
+        const clientId = process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_AUTH_CLIENT_ID;
+        const clientSecret = process.env.GOOGLE_CLIENT_SECRET || process.env.GOOGLE_AUTH_CLIENT_SECRET;
+        const redirectUri = process.env.GOOGLE_REDIRECT_URI || process.env.GOOGLE_AUTH_REDIRECT_URI;
+        const authRedirectUri = process.env.GOOGLE_AUTH_REDIRECT_URI;
 
         if (!clientId || !clientSecret) {
-            console.error('[GmailAdapter] CRITICAL: Missing Google Client Credentials in environment variables.');
-            throw new Error('Server Configuration Error: Google Client ID/Secret not found. Please check API environment variables.');
+            console.error('[GmailAdapter] CRITICAL: Missing Google Client Credentials. Checked both GOOGLE_CLIENT_ID and GOOGLE_AUTH_CLIENT_ID.');
+            throw new Error('Server Configuration Error: Google Client ID/Secret not found. Please ensure GOOGLE_CLIENT_ID/SECRET are set on Render.');
         }
 
-        const auth = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+        const auth = new google.auth.OAuth2(clientId, clientSecret, redirectUri || authRedirectUri);
 
         if (context.tokens && context.tokens.access_token) {
             // Ensure we pass tokens in the correct format for the SDK
