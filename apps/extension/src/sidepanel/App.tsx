@@ -700,8 +700,8 @@ function AppContent() {
 
                         {/* Thinking Indicator */}
                         {agentStatus && (
-                            <div className="w-full px-6 py-2 flex items-start justify-start text-left">
-                                <div className="text-left flex-1">
+                            <div className="w-full py-2">
+                                <div className="max-w-md mx-auto px-6 flex flex-col items-start justify-start text-left">
                                     <TextShimmer className="text-[11px] font-medium text-muted-foreground text-left">
                                         {agentStatus.state === 'paused' ? 'Waiting for approval...' : agentStatus.message}
                                     </TextShimmer>
