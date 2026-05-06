@@ -1,4 +1,6 @@
 import React from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { User, Bot, AlertTriangle, Terminal, FileText, Image as ImageIcon, Music, Video, File } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import PlanView from '../PlanView';
@@ -51,6 +53,7 @@ const ChevronUp = ({ className }: { className?: string }) => (
 
 export function ChatMessage({ message, currentWorkflow, pendingStep, onApprove, onReject }: ChatMessageProps) {
     const isUser = message.role === 'user';
+    const isAssistant = message.role === 'assistant';
     const isSystem = message.role === 'system';
     const isError = !!message.error;
 
@@ -114,6 +117,12 @@ export function ChatMessage({ message, currentWorkflow, pendingStep, onApprove, 
                         ) : message.content?.startsWith('✅ Step Completed') || message.content?.startsWith('❌ Step Failed') ? (
                             <div className="text-[10px] font-mono bg-muted/20 p-1.5 rounded-md italic border border-border/10">
                                 <p className="whitespace-pre-wrap">{displayContent}</p>
+                            </div>
+                        ) : isAssistant ? (
+                            <div className="prose prose-sm dark:prose-invert max-w-none text-[12px] leading-relaxed prose-headings:text-[14px] prose-headings:font-bold prose-headings:mt-2 prose-headings:mb-1 prose-p:my-1 prose-ul:my-1 prose-li:my-0.5">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {displayContent}
+                                </ReactMarkdown>
                             </div>
                         ) : (
                             <p className="whitespace-pre-wrap">{displayContent}</p>

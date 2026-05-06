@@ -256,7 +256,7 @@ User Email: ${user.email}` : '';
         try {
             // Add timeout to planning phase
             const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Planning timeout')), 45000)
+                setTimeout(() => reject(new Error('Planning timeout')), 120000)
             );
 
             const aiResponse = await Promise.race([

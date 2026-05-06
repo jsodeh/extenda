@@ -232,7 +232,7 @@ function AppContent() {
 
     useEffect(() => {
         scrollToBottom();
-    }, [messages, currentWorkflow]);
+    }, [messages, currentWorkflow, agentStatus, pendingApproval]);
 
     const addMessage = (message: Message) => {
         // Defensive: ensure content is always defined to prevent downstream errors
@@ -681,7 +681,7 @@ function AppContent() {
                     </div>
                 )}
 
-                <div className="flex flex-col min-h-full pb-20">
+                <div className="flex flex-col min-h-full pb-32">
                     <div className="flex-1 flex flex-col">
                         {messages.length === 0 ? (
                             <div className="flex-1 flex flex-col items-center justify-center text-center p-6 transition-all duration-1000">
