@@ -11,7 +11,7 @@ export class AIProcessor {
      * Summarize content
      */
     static async summarize(content: string, maxLength: number = 200, modelConfig?: ModelConfig): Promise<string> {
-        const prompt = `Summarize the following content in ${maxLength} words or less. Be concise and capture the key points:\n\n${content}`;
+        const prompt = `Summarize the following content concisely (aiming for ~${maxLength} words). \n\nIMPORTANT: Format your response as a rich, highly readable Markdown document. Use headings, bold text for emphasis, bullet points for lists, and proper paragraphing to make it visually appealing and easy to read. Do NOT return a raw block of text.\n\nContent:\n${content}`;
         const summary = await generateText(prompt, modelConfig);
         return summary.trim();
     }
@@ -19,20 +19,15 @@ export class AIProcessor {
     /**
      * Analyze content and extract insights
      */
-    static async analyze(content: string, focusArea?: string, modelConfig?: ModelConfig): Promise<any> {
+    static async analyze(content: string, focusArea?: string, modelConfig?: ModelConfig): Promise<string> {
         const focusPrompt = focusArea ? `Focus on: ${focusArea}` : '';
-        const prompt = `Analyze the following content and provide key insights, patterns, and important information. ${focusPrompt}\n\nContent:\n${content}\n\nReturn insights as a JSON object with: { insights: string[], patterns: string[], keyPoints: string[] }`;
+        const prompt = `Analyze the following content and provide key insights, patterns, and important information. ${focusPrompt}\n\nContent:\n${content}\n\nIMPORTANT: Format your response as a rich, highly readable Markdown document. Use headings, bold text for emphasis, bullet points for lists, and proper paragraphing to make it visually appealing and easy to read. Do NOT return JSON.`;
 
         try {
             const response = await generateText(prompt, modelConfig);
-            const cleanJson = response.replace(/```json/g, '').replace(/```/g, '').trim();
-            return JSON.parse(cleanJson);
+            return response.trim();
         } catch (error) {
-            return {
-                insights: [],
-                patterns: [],
-                keyPoints: ['Error analyzing content']
-            };
+            return '**Error:** Failed to analyze content.';
         }
     }
 
