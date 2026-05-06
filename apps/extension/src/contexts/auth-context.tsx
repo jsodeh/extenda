@@ -53,7 +53,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+
+    // Listen for background script messages (e.g., token expiration)
+    const handleChromeMessage = (message: any) => {
+      if (message.type === 'AUTH_ERROR') {
+        console.warn('[Auth] Auth error received from background, signing out...');
+        setUser(null);
+        setAccessToken(null);
+      }
+    };
+
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+      chrome.runtime.onMessage.addListener(handleChromeMessage);
+    }
+
+    return () => {
+      window.removeEventListener('message', handleMessage);
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+        chrome.runtime.onMessage.removeListener(handleChromeMessage);
+      }
+    };
   }, []);
 
   const signIn = async (provider: 'google' | 'github') => {

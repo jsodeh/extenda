@@ -51,6 +51,20 @@ class BackgroundWebSocketClient {
 
         this.socket.on('connect_error', (err) => {
             console.error('[BgWS] Connection error:', err.message);
+            // If the server explicitly rejected the token (e.g. expired or invalid signature), clear it
+            if (err.message.includes('Authentication error')) {
+                console.warn('[BgWS] Authentication failed, clearing invalid session...');
+                this.disconnect();
+                
+                // Clear storage
+                if (typeof chrome !== 'undefined' && chrome.storage) {
+                    chrome.storage.local.remove(['user', 'accessToken']);
+                    // Notify the frontend to log out immediately
+                    chrome.runtime.sendMessage({ type: 'AUTH_ERROR' }).catch(() => {
+                        // Ignore error if popup/sidepanel is closed
+                    });
+                }
+            }
         });
     }
 

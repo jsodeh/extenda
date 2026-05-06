@@ -271,6 +271,24 @@ export class WorkflowDependencyResolver {
                 continue;
             }
 
+            // Robustness: Handle AI trying to access an index on an object that wraps an array
+            // E.g., AI writes step-1.output.0 but output is { emails: [...] }
+            if (value && typeof value === 'object' && !Array.isArray(value) && !isNaN(Number(part))) {
+                const arrayProps = Object.values(value).filter(v => Array.isArray(v));
+                if (arrayProps.length === 1) {
+                    console.log(`[DependencyResolver] Auto-unwrapping object to array for index '${part}' access`);
+                    value = arrayProps[0];
+                } else if (value.emails && Array.isArray(value.emails)) {
+                    value = value.emails;
+                } else if (value.messages && Array.isArray(value.messages)) {
+                    value = value.messages;
+                } else if (value.data && Array.isArray(value.data)) {
+                    value = value.data;
+                } else if (value.items && Array.isArray(value.items)) {
+                    value = value.items;
+                }
+            }
+
             value = value?.[part];
             if (value === undefined) break;
         }
