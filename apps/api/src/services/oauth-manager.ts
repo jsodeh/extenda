@@ -4,7 +4,7 @@ import { pool } from '../db/index.js';
 const query = (text: string, params?: any[]) => pool.query(text, params);
 
 const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex');
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
 
 interface OAuthCredentials {
     id?: number;
@@ -27,8 +27,8 @@ export class OAuthManager {
     private encryptionKey: Buffer;
 
     constructor() {
-        this.encryptionKey = Buffer.from(ENCRYPTION_KEY, 'hex');
-        if (this.encryptionKey.length !== 32) {
+        this.encryptionKey = Buffer.from(ENCRYPTION_KEY || '', 'hex');
+        if (ENCRYPTION_KEY && this.encryptionKey.length !== 32) {
             throw new Error('ENCRYPTION_KEY must be 32 bytes (64 hex characters)');
         }
     }
@@ -37,6 +37,7 @@ export class OAuthManager {
      * Encrypt sensitive token data using AES-256-GCM
      */
     private encrypt(text: string): EncryptedData {
+        if (this.encryptionKey.length!==32) throw new Error('Configure ENCRYPTION_KEY before connecting accounts');
         const iv = crypto.randomBytes(16);
         const cipher = crypto.createCipheriv(ENCRYPTION_ALGORITHM, this.encryptionKey, iv);
 

@@ -226,7 +226,6 @@ When using tools, execute immediately - don't ask for confirmation unless the ac
      * Handle tool/function calls from Gemini
      */
     private async handleToolCall(toolCall: any): Promise<void> {
-        console.log('[VoiceSession] Tool call received:', toolCall);
         this.setStatus('thinking');
 
         const functionCalls = toolCall.functionCalls || [];
@@ -241,7 +240,6 @@ When using tools, execute immediately - don't ask for confirmation unless the ac
                 // Execute tool via unified router
                 const result = await executeTool(name, args || {}, this.config.context || {});
 
-                console.log('[VoiceSession] Tool result:', name, result);
                 this.config.onToolResult?.(name, result);
 
                 responses.push({

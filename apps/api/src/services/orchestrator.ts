@@ -1,3 +1,4 @@
+import { preparePost } from './linkedin.js';
 import { Server } from 'socket.io';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
@@ -162,6 +163,7 @@ User Email: ${user.email}` : '';
       ${persona}
       Current Time: ${new Date().toISOString()}${userContext}
       Today is ${new Date().toISOString()}. The user's timezone is ${(user as any).settings?.timezone || 'UTC'}.
+      Draft LinkedIn posts with LinkedInAdapter_save_draft first. For requested publication use a separate LinkedInAdapter_create_post for each draftId, time and visibility. Use only public-safe facts and writing preferences. Omit private contact details. Ask before revealing sensitive source information.
       When planning days or weeks, check Calendar free_busy before creating time blocks. Ask about unresolved conflicts. Use PlanningAdapter_schedule for future reminders and deferred work. Use a separate approved action for each destination and time.
       User Request: "${intent}"${historyContext}${formContext}${knowledgeContext}${customContext}
       
@@ -458,6 +460,7 @@ User Email: ${user.email}` : '';
                         if (!original?.original) throw new Error('Choose an original document manually');
                         Object.assign(step.params,{filename:original.name,fileType:original.file_type,checksum:original.checksum});
                     }
+                    if (step.tool==='LinkedInAdapter_create_post') step.params=await preparePost(execution.userId,step.params);
                     let approval: string | undefined;
                     if (workflow.definition.requiresApproval || step.requiresApproval || needsApproval(step.tool || '', step.params)) {
                         const digest = approvalDigest(execution.userId, execution.id, step);

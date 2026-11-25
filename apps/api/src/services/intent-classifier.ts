@@ -113,9 +113,9 @@ export class IntentClassifier {
 
     async classify(message: string, conversationHistory: string[] = [], modelConfig?: ModelConfig): Promise<IntentClassification> {
         // 1. Try simple command match first for immediate execution
-        const simpleResult = this.simpleCommandMatch(message);
+        const simpleResult = /\b(remind|schedule|every|tomorrow|next week|at \d)/i.test(message) ? null : this.simpleCommandMatch(message);
         if (simpleResult) {
-            console.log('Intent classified as simple command:', simpleResult.tool, simpleResult.params);
+            console.log('Intent classified as simple command:', simpleResult.tool);
             return simpleResult;
         }
 

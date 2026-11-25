@@ -25,7 +25,7 @@ export const authMiddleware = async (c: Context, next: Next) => {
         const payload = await verify(token, jwtSecret, 'HS256');
         const userId = payload.userId as string;
 
-        if (!userId) {
+        if (!userId || payload.type==='refresh') {
             return c.json({ error: 'Unauthorized: Invalid token payload' }, 401);
         }
 

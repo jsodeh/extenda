@@ -1,3 +1,4 @@
+import LinkedInDrafts from '../components/LinkedInDrafts';
 import { useEffect, useState } from 'react';
 import { initiateOAuthFlow, fetchConnectedProviders, disconnectProvider } from '../lib/oauth';
 import { Check, X, Loader, Shield, Lock, Eye, AlertTriangle, Settings, ChevronRight, RotateCcw } from 'lucide-react';
@@ -367,6 +368,7 @@ export default function IntegrationsPage() {
 
                         {/* Actions Scrollview */}
                         <div className="flex-1 overflow-y-auto px-6 pb-8">
+                            {selectedAdapter.provider === 'linkedin' && <LinkedInDrafts />}
                             <h5 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
                                 <AlertTriangle className="w-3 h-3" />
                                 Granular Permissions

@@ -5,7 +5,9 @@
 import { Hono } from 'hono';
 import { identifyElement, analyzePageElements } from '../services/vision-analyzer.js';
 
+import { authMiddleware } from '../lib/auth.js';
 const vision = new Hono();
+vision.use('*',authMiddleware);
 
 /**
  * POST /vision/identify-element
@@ -21,7 +23,6 @@ vision.post('/identify-element', async (c) => {
             }, 400);
         }
 
-        console.log(`[Vision] Identifying element: "${description}"`);
 
         const element = await identifyElement(screenshot, description);
 
@@ -59,7 +60,6 @@ vision.post('/analyze-page', async (c) => {
             }, 400);
         }
 
-        console.log('[Vision] Analyzing page elements');
 
         const elements = await analyzePageElements(screenshot);
 

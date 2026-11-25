@@ -3,7 +3,7 @@
  * Opens OAuth popup, listens for success message, closes popup
  */
 
-import { getApiUrl } from './api';
+import { getApiUrl,privateRequest } from './api';
 
 export interface OAuthResult {
     success: boolean;
@@ -14,6 +14,9 @@ export interface OAuthResult {
 export async function initiateOAuthFlow(provider: string): Promise<OAuthResult> {
     const API_BASE_URL = await getApiUrl();
 
+    let path:string;
+    try {path=(await (await privateRequest('/oauth/authorize/'+provider,{method:'POST'})).json()).path;}
+    catch(e){return {success:false,error:(e as Error).message};}
     return new Promise((resolve) => {
         const width = 600;
         const height = 700;
@@ -21,7 +24,7 @@ export async function initiateOAuthFlow(provider: string): Promise<OAuthResult> 
         const top = window.screen.height / 2 - height / 2;
 
         const popup = window.open(
-            `${API_BASE_URL}/oauth/authorize/${provider}`,
+            API_BASE_URL+path,
             `oauth_${provider}`,
             `width=${width},height=${height},left=${left},top=${top}`
         );
@@ -33,9 +36,9 @@ export async function initiateOAuthFlow(provider: string): Promise<OAuthResult> 
 
         // Listen for OAuth success message from popup
         const messageHandler = (event: MessageEvent) => {
-            if (event.origin !== API_BASE_URL) return;
+            if (event.origin !== new URL(API_BASE_URL).origin || event.source !== popup) return;
 
-            if (event.data.type === 'oauth_success') {
+            if (event.data.type === 'oauth_success' && event.data.provider===provider) {
                 window.removeEventListener('message', messageHandler);
                 resolve({ success: true, provider: event.data.provider });
             }
@@ -75,7 +78,7 @@ export async function fetchConnectedProviders(): Promise<string[]> {
 export async function disconnectProvider(provider: string): Promise<boolean> {
     const API_BASE_URL = await getApiUrl();
     try {
-        const response = await fetch(`${API_BASE_URL}/oauth/disconnect/${provider}`, {
+        const response = await privateRequest(`/oauth/disconnect/${provider}`, {
             method: 'DELETE'
         });
         return response.ok;

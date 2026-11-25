@@ -1,3 +1,4 @@
+import { getCookie,setCookie,deleteCookie } from 'hono/cookie';
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
@@ -72,7 +73,7 @@ function getOAuthProviders(): Record<string, OAuthConfig> {
             userInfoUrl: 'https://api.linkedin.com/v2/userinfo',
             clientId: process.env.LINKEDIN_CLIENT_ID || '',
             clientSecret: process.env.LINKEDIN_CLIENT_SECRET || '',
-            scopes: ['openid', 'profile', 'email', 'w_member_social', 'r_liteprofile'],
+            scopes: ['openid', 'profile', 'email'],
             redirectUri: process.env.LINKEDIN_REDIRECT_URI || 'http://localhost:3000/oauth/auth/callback/linkedin'
         }
     };
@@ -113,10 +114,14 @@ authOAuth.get('/:provider', (c) => {
     }
 
     // Generate state for CSRF protection
+    const origin=c.req.query('origin') || '';
+    const allowed=(process.env.EXTENSION_ORIGINS || '').split(',').map(o=>o.trim());
+    if (!/^chrome-extension:\/\/[a-p]{32}$/.test(origin) || (process.env.NODE_ENV==='production' && !allowed.includes(origin)))
+        return c.json({error:'Register this Chrome extension origin before signing in'},400);
     const state = crypto.randomUUID();
 
     // Store state in cookie (simplified - in production use session)
-    c.header('Set-Cookie', `oauth_auth_state=${state}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600`);
+    setCookie(c,'oauth_auth_state',state+'|'+origin+'|'+provider,{httpOnly:true,secure:new URL(c.req.url).protocol==='https:',sameSite:'Lax',path:'/oauth/auth',maxAge:600});
 
     // Build authorization URL
     const params = new URLSearchParams({
@@ -158,8 +163,11 @@ authOAuth.get('/callback/:provider', async (c) => {
     const state = c.req.query('state');
     const error = c.req.query('error');
 
+    const [expected,origin,boundProvider]=(getCookie(c,'oauth_auth_state') || '').split('|');
+    if (!state || state!==expected || provider!==boundProvider || !/^chrome-extension:\/\/[a-p]{32}$/.test(origin || '')) return c.json({error:'OAuth state expired'},400);
+    deleteCookie(c,'oauth_auth_state',{path:'/oauth/auth'});
     if (error) {
-        return sendErrorResponse(c, provider, `OAuth error: ${error}`);
+        return sendErrorResponse(c, provider, 'Authorization declined');
     }
 
     if (!code) {
@@ -184,8 +192,7 @@ authOAuth.get('/callback/:provider', async (c) => {
         });
 
         if (!tokenResponse.ok) {
-            const error = await tokenResponse.text();
-            console.error('Token exchange failed:', error);
+            console.error('Token exchange failed', tokenResponse.status);
             return sendErrorResponse(c, provider, 'Failed to exchange authorization code');
         }
 
@@ -211,11 +218,11 @@ authOAuth.get('/callback/:provider', async (c) => {
         let name: string;
 
         if (provider === 'google') {
-            email = userInfo.email;
-            name = userInfo.name || userInfo.email.split('@')[0];
+            email = userInfo.verified_email || userInfo.email_verified ? userInfo.email : undefined;
+            name = userInfo.name || email?.split('@')[0];
         } else if (provider === 'github') {
             // GitHub might not provide email in userinfo, need to fetch separately
-            email = userInfo.email;
+            email = '';
 
             // If email is not public, fetch from emails endpoint
             if (!email) {
@@ -228,14 +235,14 @@ authOAuth.get('/callback/:provider', async (c) => {
 
                 if (emailsResponse.ok) {
                     const emails = await emailsResponse.json();
-                    const primaryEmail = emails.find((e: any) => e.primary);
-                    email = primaryEmail?.email || emails[0]?.email;
+                    const primaryEmail = emails.find((e: any) => e.primary && e.verified);
+                    email = primaryEmail?.email;
                 }
             }
 
             name = userInfo.name || userInfo.login;
         } else if (provider === 'linkedin') {
-            email = userInfo.email;
+            email = userInfo.email_verified === true ? userInfo.email : undefined;
             name = userInfo.name || userInfo.localizedFirstName + ' ' + userInfo.localizedLastName;
         } else {
             return sendErrorResponse(c, provider, 'Unsupported provider');
@@ -344,12 +351,12 @@ authOAuth.get('/callback/:provider', async (c) => {
             email: user.email,
             name: user.name,
             role: user.role
-        })},
+        }).replace(/</g,'\\u003c')},
                             tokens: {
                                 accessToken: '${jwtAccessToken}',
                                 refreshToken: '${jwtRefreshToken}'
                             }
-                        }, '*');
+                        }, ${JSON.stringify(origin)});
                         setTimeout(() => window.close(), 2000);
                     </script>
                 </body>

@@ -53,7 +53,7 @@ user.delete('/account', async (c) => {
 
 // Helper functions (implement these based on your schema)
 async function getUserData(userId: string) {
-    return db.query.users.findFirst({ where: eq(users.id, userId as any) });
+    return db.query.users.findFirst({ columns:{id:true,name:true,email:true,role:true,createdAt:true}, where: eq(users.id, userId as any) });
 }
 
 async function getUserWorkflows(userId: string) { return []; }

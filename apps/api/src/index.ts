@@ -48,14 +48,6 @@ if (process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_AUTH_CLIENT_ID) {
 
 const port = Number(process.env.PORT) || 3000;
 
-app.use('*', cors({
-    origin: (origin) => origin, // Reflect origin to allow all (including dynamic chrome-extension IDs)
-    credentials: true,
-}));
-
-// Mount Custom Auth Routes
-app.route('/oauth/auth', authOAuth);
-
 // Migrations handled by runMigrations() in serve callback or elsewhere
 // console.log('Skipping top-level migration check...');
 
@@ -109,7 +101,7 @@ io.use(async (socket, next) => {
         const payload = await verify(token, jwtSecret, 'HS256');
         const userId = payload.userId as string;
 
-        if (!userId) {
+        if (!userId || payload.type==='refresh') {
             console.log('Socket connection rejected: Invalid payload');
             return next(new Error('Authentication error - Invalid token payload'));
         }
@@ -359,7 +351,7 @@ RULES:
             (execution as any)._workflow = workflow;
 
             // Execute with approval required based on AI planning
-            orchestrator.execute(execution, workflow, workflow.definition.requiresApproval).catch(err => {
+            orchestrator.execute(execution, workflow, workflow.definition.requiresApproval, data.modelConfig).catch(err => {
                 console.error('Execution error:', err);
                 socket.emit('agent:status', { state: 'error', message: 'Execution failed' });
             });

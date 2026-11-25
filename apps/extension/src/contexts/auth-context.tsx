@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { getApiUrl } from '../lib/api';
 
 
@@ -28,6 +28,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // API_URL removed in favor of dynamic getApiUrl() in signIn method
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const loginPopup=useRef<Window|null>(null);
+  const loginOrigin=useRef('');
   const [user, setUser] = useState<User | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -44,7 +46,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Listen for OAuth messages from the popup
     const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'oauth_success') {
+      if (event.origin===loginOrigin.current && loginPopup.current && event.source===loginPopup.current && event.data?.type === 'oauth_success' && event.data.tokens?.accessToken) {
         const { user, tokens } = event.data;
         setUser(user);
         setAccessToken(tokens.accessToken);
@@ -83,10 +85,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const dynamicApiUrl = await getApiUrl();
     const cacheBuster = Date.now();
-    const popupUrl = `${dynamicApiUrl}/oauth/auth/${provider}?cb=${cacheBuster}`;
+    const popupUrl = `${dynamicApiUrl}/oauth/auth/${provider}?cb=${cacheBuster}&origin=${encodeURIComponent(window.location.origin)}`;
     console.log(`[Auth] Opening popup: ${popupUrl}`);
 
-    window.open(
+    loginOrigin.current=new URL(dynamicApiUrl).origin;
+    loginPopup.current=window.open(
       popupUrl,
       'extenda_auth',
       `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes,toolbar=no,menubar=no,location=no`

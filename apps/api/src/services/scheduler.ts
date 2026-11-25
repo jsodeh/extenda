@@ -1,3 +1,4 @@
+import { linkedAccount, publishPost, ProviderFailure } from './linkedin.js';
 import { pool } from '../db/index.js';
 import { instant, validTimezone } from '../lib/scheduling.js';
 import { GoogleCalendarAdapter } from '../adapters/google-calendar.js';
@@ -19,13 +20,13 @@ export async function enqueue(owner: string, params: any, key: string, approval:
     return rows[0];
 }
 
-export async function executeDueJobs(limit=40) {
+export async function executeDueJobs(limit=40, onlyId?: string) {
     // A remote service might have accepted a request before a worker stopped. Quarantine such jobs.
     await pool.query("UPDATE scheduled_jobs SET status='uncertain',result='{\"message\":\"Check provider history before rescheduling\"}' WHERE status='running' AND claimed_at < now()-interval '20 minutes'");
     for (let n=0; n<limit; n++) {
         const {rows:[job]}=await pool.query(`UPDATE scheduled_jobs SET status='running',attempts=attempts+1,claimed_at=now()
-            WHERE id=(SELECT id FROM scheduled_jobs WHERE status='pending' AND due_at<=now()
-            ORDER BY due_at FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *`);
+            WHERE id=(SELECT id FROM scheduled_jobs WHERE status='pending' AND due_at<=now() AND ($1::uuid IS NULL OR id=$1)
+            ORDER BY due_at FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *`,[onlyId || null]);
         if (!job) return;
         let externalStarted=false;
         try {
@@ -33,6 +34,11 @@ export async function executeDueJobs(limit=40) {
             if (job.action === 'reminder') {
                 await pool.query('INSERT INTO personal_reminders(job_id,occurrence,message) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[job.id,job.due_at,job.approved_payload.message]);
                 result={message:job.approved_payload.message};
+            } else if (job.action === 'linkedin') {
+                const account=await linkedAccount(job.user_id);
+                if (!account || account.author!==job.approved_payload.author) throw new ProviderFailure('Reconnect the approved LinkedIn account or publish manually',403);
+                externalStarted=true;
+                result=await publishPost(job.approved_payload,account.token);
             } else {
                 const {rows:[user]}=await pool.query('SELECT google_access_token,google_refresh_token FROM users WHERE id=$1',[job.user_id]);
                 const credentials=await oauthManager.getCredentials(job.user_id,'google');
@@ -48,6 +54,14 @@ export async function executeDueJobs(limit=40) {
                     (now() AT TIME ZONE timezone)+interval '8 days', CASE recurrence WHEN 'daily' THEN interval '1 day' ELSE interval '7 days' END) t
                     WHERE t AT TIME ZONE timezone > now()) END WHERE id=$1 AND status='running'`,[job.id,result]);
         } catch (error) {
+            if (error instanceof ProviderFailure && error.status===429 && job.attempts < 3) {
+                await pool.query("UPDATE scheduled_jobs SET status='pending',due_at=now()+$2*interval '1 second' WHERE id=$1",[job.id,Math.min(3600,Math.max(60,error.retryAfter))]);
+                continue;
+            }
+            if (error instanceof ProviderFailure && error.status<500) {
+                await pool.query("UPDATE scheduled_jobs SET status='failed',result=$2 WHERE id=$1",[job.id,{message:error.message}]);
+                continue;
+            }
             const message=externalStarted ? 'Check provider history before retrying' : 'Delivery failed. Check account connection.';
             await pool.query('UPDATE scheduled_jobs SET status=$2,result=$3 WHERE id=$1',[job.id,externalStarted?'uncertain':'failed',{message}]);
         }
