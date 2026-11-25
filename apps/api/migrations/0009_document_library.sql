@@ -1,3 +1,40 @@
+-- Reconcile installations which manually journaled 0008 with the UUID schema still active.
+-- 0002 used UUID documents. Preserve that table before creating integer chunk references.
+DO $$ BEGIN
+    IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema=current_schema()
+        AND table_name='documents' AND column_name='id' AND data_type='uuid') THEN
+        ALTER TABLE documents RENAME TO documents_legacy_uuid;
+    END IF;
+END $$;
+
+-- From 0005_knowledgebase
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE TABLE IF NOT EXISTS "documents" (
+    "id" SERIAL PRIMARY KEY,
+    "user_id" UUID NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+    "name" VARCHAR(255) NOT NULL,
+    "file_path" TEXT NOT NULL,
+    "file_size" INTEGER NOT NULL,
+    "file_type" VARCHAR(50) NOT NULL,
+    "status" VARCHAR(20) DEFAULT 'processing',
+    "chunks_count" INTEGER DEFAULT 0,
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS "document_chunks" (
+    "id" SERIAL PRIMARY KEY,
+    "document_id" INTEGER NOT NULL REFERENCES "documents"("id") ON DELETE CASCADE,
+    "chunk_index" INTEGER NOT NULL,
+    "content" TEXT NOT NULL,
+    "embedding" vector(1536),
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    UNIQUE("document_id", "chunk_index")
+);
+CREATE INDEX IF NOT EXISTS "document_chunks_embedding_idx" ON "document_chunks" USING ivfflat (embedding vector_cosine_ops);
+
 -- Databases with the normalized 0005 layout retain their ids and vector index.
 ALTER TABLE documents ALTER COLUMN file_path DROP NOT NULL;
 ALTER TABLE documents ALTER COLUMN file_type TYPE text;

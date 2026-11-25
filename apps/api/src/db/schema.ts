@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, boolean, jsonb, integer, customType } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, boolean, jsonb, integer, serial, customType } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 const pgVector = customType<{ data: number[]; config: { dimensions: number } }>({
@@ -93,14 +93,28 @@ export const auditLogs = pgTable('audit_logs', {
 });
 
 export const documents = pgTable('documents', {
-    id: uuid('id').defaultRandom().primaryKey(),
-    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
-    filename: text('filename').notNull(),
-    content: text('content').notNull(),
-    embedding: pgVector('embedding', { dimensions: 768 }),
+    id: serial('id').primaryKey(),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    size: integer('file_size').notNull(),
+    fileType: text('file_type').notNull(),
+    original: customType<{data: Buffer}>({ dataType: () => 'bytea' })('original'),
+    checksum: text('checksum'),
+    status: text('status').default('processing'),
+    chunksCount: integer('chunks_count').default(0),
     metadata: jsonb('metadata').default({}),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+export const documentChunks = pgTable('document_chunks', {
+    id: serial('id').primaryKey(),
+    documentId: integer('document_id').references(() => documents.id, {onDelete: 'cascade'}).notNull(),
+    chunkIndex: integer('chunk_index').notNull(),
+    content: text('content').notNull(),
+    embedding: pgVector('embedding', { dimensions: 1536 }),
+    embeddingModel: text('embedding_model'),
+    metadata: jsonb('metadata').default({}),
 });
 
 export const chatSessions = pgTable('chat_sessions', {

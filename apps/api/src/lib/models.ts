@@ -148,7 +148,8 @@ export const embedContent = async (text: string, config?: ModelConfig): Promise<
     } else if (config.provider === 'openai') {
         const openai = new OpenAI({ apiKey: config.apiKey });
         const result = await openai.embeddings.create({
-            model: "text-embedding-3-small",
+            model: config.model || "text-embedding-3-small",
+            dimensions: 1536,
             input: text,
         });
         return result.data[0].embedding;
