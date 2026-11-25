@@ -1,11 +1,12 @@
+import { getApiUrl } from '../api';
 /**
  * Smart Click Tool - Vision-based element clicking
  * Uses Gemini Vision to identify elements from descriptions
  */
 
-import { captureScreenshotBase64 } from './screenshot';
+import { assertVisible, BrowserTarget, captureScreenshotBase64 } from './screenshot';
 
-export interface SmartClickParams {
+export interface SmartClickParams extends BrowserTarget {
     description: string;  // Natural language element description
     action?: 'click' | 'hover' | 'identify';  // Default: click
 }
@@ -29,11 +30,12 @@ export interface SmartClickResult {
 /**
  * Click at specific coordinates using content script
  */
-async function clickAtCoordinates(tabId: number, x: number, y: number): Promise<void> {
-    await chrome.tabs.sendMessage(tabId, {
+async function clickAtCoordinates(tabId: number, x: number, y: number,targetUrl?: string): Promise<void> {
+    const response=await chrome.tabs.sendMessage(tabId, {
         type: 'EXECUTE_CLICK_AT_COORDINATES',
-        params: { x, y }
+        params: { x, y, targetUrl }
     });
+    if (!response?.success) throw new Error(response?.error || 'Click unavailable');
 }
 
 /**
@@ -44,8 +46,7 @@ async function identifyElementFromScreenshot(
     description: string
 ): Promise<ElementLocation | null> {
     // Get API URL from storage or use default
-    const { apiUrl = 'https://extenda-pxa6.onrender.com' } =
-        await chrome.storage.local.get('apiUrl');
+    const apiUrl=await getApiUrl();
 
     const { accessToken } = await chrome.storage.local.get('accessToken');
 
@@ -77,7 +78,7 @@ export async function handleSmartClick(params: SmartClickParams): Promise<SmartC
         console.log('[SmartClick] Starting with description:', params.description);
 
         // 1. Capture screenshot
-        const screenshot = await captureScreenshotBase64();
+        const screenshot = await captureScreenshotBase64(params);
         console.log('[SmartClick] Screenshot captured');
 
         // 2. Send to vision API for element identification
@@ -102,12 +103,12 @@ export async function handleSmartClick(params: SmartClickParams): Promise<SmartC
         }
 
         // Default: click
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        const tab = await assertVisible(params);
         if (!tab?.id) {
             throw new Error('No active tab');
         }
 
-        await clickAtCoordinates(tab.id, element.x, element.y);
+        await clickAtCoordinates(tab.id, element.x, element.y,params.targetUrl);
 
         return {
             success: true,

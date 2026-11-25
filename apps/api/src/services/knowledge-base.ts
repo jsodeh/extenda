@@ -62,7 +62,7 @@ export class KnowledgeBaseService {
     }
 
     async original(owner: string, id: number) {
-        return (await pool.query('SELECT name,file_type,original,metadata FROM documents WHERE user_id=$1 AND id=$2',[owner,id])).rows[0];
+        return (await pool.query('SELECT name,file_type,original,metadata,checksum FROM documents WHERE user_id=$1 AND id=$2',[owner,id])).rows[0];
     }
 
     async preview(owner: string, id: number) {
@@ -87,7 +87,7 @@ export class KnowledgeBaseService {
             "SELECT 1 FROM documents WHERE user_id=$1 AND status='ready' AND metadata->>'semantic'='true' LIMIT 1",[owner])).rowCount;
         const vector = eligible ? await embed(query).catch(() => null) : null;
         const { rows } = await pool.query(`WITH ranked AS (
-            SELECT d.name,c.content,c.metadata->>'source' AS source,c.chunk_index,
+            SELECT d.id,d.name,c.content,c.metadata->>'source' AS source,c.chunk_index,
             (SELECT count(*) FROM unnest($2::text[]) k WHERE position(k in lower(d.name || ' ' || c.content))>0) AS hits,
             CASE WHEN c.embedding_model=$4 THEN 1-(c.embedding <=> $3::vector) ELSE 0 END AS similarity
             FROM document_chunks c JOIN documents d ON c.document_id=d.id WHERE d.user_id=$1 AND d.status='ready')

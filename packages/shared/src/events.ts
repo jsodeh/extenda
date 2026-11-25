@@ -36,6 +36,7 @@ export interface WorkflowStartPayload {
 
 export interface WorkflowResumePayload {
     approval: string;
+    revised?: Record<string, unknown>;
     executionId: string;
     approved: boolean;
     modelConfig?: ModelConfig;

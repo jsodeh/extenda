@@ -4,7 +4,7 @@
  */
 
 export interface DOMReaderParams {
-    action: 'extract_text' | 'extract_structured' | 'find_element' | 'get_metadata' | 'screenshot';
+    action: 'inspect_form' | 'extract_text' | 'extract_structured' | 'find_element' | 'get_metadata' | 'screenshot';
     selector?: string;
     schema?: Record<string, string>; // CSS selectors for structured extraction
     description?: string; // Natural language element description
@@ -124,6 +124,20 @@ export class DOMReader {
             let data: any;
 
             switch (params.action) {
+                case 'inspect_form':
+                    data = Array.from(document.querySelectorAll<HTMLElement>('form,input:not([type=hidden]),select,textarea,button,[contenteditable=true],[role=alert]')).slice(0,150).map(el => {
+                        const control = el as HTMLInputElement;
+                        const labelIds = (el.getAttribute('aria-labelledby') || '').split(/\s+/);
+                        return {
+                            selector: this.getSelector(el), type: control.type || el.tagName.toLowerCase(),
+                            label: el.getAttribute('aria-label') || labelIds.map(id=>document.getElementById(id)?.textContent).filter(Boolean).join(' ') ||
+                                control.labels?.[0]?.textContent || control.placeholder || control.name || (el.matches('button,[role=alert]') ? el.textContent : ''),
+                            required: control.required || el.getAttribute('aria-required') === 'true',
+                            validation: control.validationMessage, choice: ['checkbox','radio'].includes(control.type) ? control.value : undefined,
+                            options: el instanceof HTMLSelectElement ? Array.from(el.options).map(o=>({label:o.text,value:o.value})) : undefined
+                        };
+                    });
+                    break;
                 case 'extract_text':
                     data = this.extractText(params.selector);
                     break;
@@ -170,22 +184,14 @@ export class DOMReader {
      * Generate CSS selector for element
      */
     private static getSelector(element: Element): string {
-        if (element.id) {
-            return `#${element.id}`;
-        }
-
+        if (element.id && document.querySelectorAll('#'+CSS.escape(element.id)).length === 1) return '#'+CSS.escape(element.id);
         const path: string[] = [];
         let current: Element | null = element;
-
         while (current && current !== document.body) {
-            let selector = current.tagName.toLowerCase();
-            if (current.className) {
-                selector += `.${current.className.split(' ').join('.')}`;
-            }
-            path.unshift(selector);
-            current = current.parentElement;
+            const index = Array.from(current.parentElement?.children || []).indexOf(current)+1;
+            path.unshift(current.tagName.toLowerCase()+':nth-child('+index+')');
+            current=current.parentElement;
         }
-
-        return path.join(' > ');
+        return ['body',...path].join(' > ');
     }
 }

@@ -8,7 +8,7 @@ export const FormFillerTool: Tool = {
         properties: {
             action: {
                 type: 'string',
-                enum: ['fill_text', 'click', 'select', 'submit', 'fill_form'],
+                enum: ['fill_text', 'click', 'select', 'submit', 'fill_form', 'attach'],
                 description: 'Action to perform'
             },
             selector: {
@@ -19,6 +19,7 @@ export const FormFillerTool: Tool = {
                 type: 'string',
                 description: 'Value to fill or select'
             },
+            documentId: { type: 'number', description: 'User-selected library original to attach' },
             formData: {
                 type: 'object',
                 description: 'Map of selectors to values for fill_form action'

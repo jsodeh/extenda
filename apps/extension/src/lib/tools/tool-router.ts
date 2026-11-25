@@ -232,6 +232,11 @@ export async function executeTool(
     args: Record<string, any>,
     context: ToolExecutionContext
 ): Promise<any> {
+    if (['smart_click','fill_form','screenshot','read_page'].includes(name)) {
+        const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
+        if (!tab?.id || !tab.url || !/^https?:/.test(tab.url)) throw new Error('Select a supported page');
+        args={...args,tabId:tab.id,targetUrl:tab.url};
+    }
     if (['smart_click','fill_form','send_email','create_calendar_event','send_slack_message','create_notion_page','close_tab'].includes(name)
         && !window.confirm(`Approve ${name}?\n${JSON.stringify(args, null, 2)}`)) throw new Error('Action declined');
 
@@ -261,9 +266,9 @@ async function executeClientTool(name: string, args: Record<string, any>): Promi
         'switch_tab': { handler: 'TabManager', params: { action: 'switch', ...args } },
         'list_tabs': { handler: 'TabManager', params: { action: 'list' } },
         'smart_click': { handler: 'SmartClick', params: args },
-        'screenshot': { handler: 'Screenshot', params: {} },
-        'read_page': { handler: 'DOMReader', params: { action: 'read', ...args } },
-        'fill_form': { handler: 'FormFiller', params: { action: 'fill_text', selector: args.selector, value: args.value } },
+        'screenshot': { handler: 'Screenshot', params: args },
+        'read_page': { handler: 'DOMReader', params: { action: 'extract_text', ...args } },
+        'fill_form': { handler: 'FormFiller', params: { ...args, action: 'fill_text' } },
         'notify': { handler: 'Notifier', params: { action: 'notify', ...args } }
     };
 

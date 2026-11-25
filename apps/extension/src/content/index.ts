@@ -29,7 +29,10 @@ interface ContentScriptResponse {
  * Handle messages from background script
  */
 chrome.runtime.onMessage.addListener((message: ContentScriptMessage, sender, sendResponse) => {
-    console.log('[Extenda] Content script received message:', message);
+    if (message.params?.targetUrl && message.params.targetUrl !== location.href) {
+        sendResponse({success:false,error:'Target page changed. Review the new page.'});
+        return false;
+    }
 
     // Handle different tool execution requests
     switch (message.type) {
@@ -143,7 +146,7 @@ async function handleGmailScraper(action?: string, params?: any, requestId?: str
  */
 async function handleFormFiller(params: FormFillerParams, requestId?: string): Promise<ContentScriptResponse> {
     try {
-        const result = FormFiller.execute(params);
+        const result = await FormFiller.execute(params);
         return {
             type: 'FORM_FILLER_RESULT',
             success: result.success,
@@ -183,23 +186,9 @@ async function handleClickAtCoordinates(
             };
         }
 
-        console.log('[Extenda] Clicking element at', x, y, ':', element);
-
-        // Simulate mouse events for realistic clicking
-        const clickEvent = new MouseEvent('click', {
-            view: window,
-            bubbles: true,
-            cancelable: true,
-            clientX: x,
-            clientY: y
-        });
-
-        element.dispatchEvent(clickEvent);
-
-        // Also try native click if available
-        if (element instanceof HTMLElement) {
-            element.click();
-        }
+        if (element.closest('form,[form]')) throw new Error('Review the form and use the form submission tool');
+        if (!(element instanceof HTMLElement)) throw new Error('Element unavailable');
+        element.click();
 
         return {
             type: 'CLICK_RESULT',

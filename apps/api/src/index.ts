@@ -15,7 +15,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { Server } from 'socket.io';
 import { EVENTS_CLIENT, EVENTS_SERVER, WorkflowStartPayload, WorkflowApprovePayload, WorkflowResumePayload, Execution } from '@extenda/shared';
-import { eq } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { runMigrations } from './db/migrate.js';
 
 import app from './server.js';
@@ -141,6 +141,18 @@ io.on('connection', (socket) => {
     if (socket.handshake.auth.role === 'browser') socket.join(`browser:${user.id}`);
     console.log(`Socket ${socket.id} joined room user:${user.id}`);
 
+    if (socket.handshake.auth.role !== 'browser') {
+        void db.select().from(executions).where(and(eq(executions.userId,user.id),eq(executions.status,'paused')))
+            .orderBy(desc(executions.startedAt)).limit(1).then(async ([run]) => {
+                const ctx=run?.context as any;
+                if (!ctx?.review || !run.workflowId) return;
+                const workflow=await db.query.workflows.findFirst({where:and(eq(workflows.id,run.workflowId),eq(workflows.userId,user.id))});
+                if (!workflow) return;
+                const definition=workflow.definition as any;
+                socket.emit(EVENTS_SERVER.WORKFLOW_PLAN,{workflowId:workflow.id,executionId:run.id,status:'paused',approval:ctx.approval,pendingStepId:ctx.review.id,
+                    plan:{...workflow,definition:{...definition,steps:definition.steps.map((s:any)=>s.id===ctx.review.id ? ctx.review : s)}}});
+            }).catch(()=>console.error('Failed to restore pending review'));
+    }
     // Forward tool execution results from background worker to orchestrator
     // CRITICAL: This was missing before — tool:result events from clients were silently dropped
     // because io.on() only handles 'connection' events, not client-emitted events.
@@ -291,7 +303,7 @@ RULES:
             socket.emit('agent:status', { state: 'planning', message: 'Designing workflow...' });
 
             const workflowIntent = quickClassification.workflowIntent || data.intent;
-            const workflow = await orchestrator.plan(workflowIntent, user, sessionId, data.modelConfig);
+            const workflow = await orchestrator.plan(workflowIntent, user, sessionId, data.modelConfig, data.context?.form);
 
             // TIER 3.5: Direct Response Check
             // If the AI determined it can answer directly without any steps, we skip the workflow
@@ -364,7 +376,7 @@ RULES:
         try {
             await orchestrator.resume(data.executionId, user.id, data.approved, data.approval, data.modelConfig, {
                 access_token: user.googleAccessToken, refresh_token: user.googleRefreshToken
-            });
+            }, data.revised);
         } catch (error) {
             console.error('Workflow resume failed:', error);
             socket.emit(EVENTS_SERVER.WORKFLOW_ERROR, { error: `Failed to resume: ${(error as Error).message}` });

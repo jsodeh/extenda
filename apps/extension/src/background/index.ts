@@ -1,3 +1,4 @@
+import { privateRequest } from '../lib/api';
 import { bgWsClient } from '../lib/websocket-background';
 import { handleTabManager } from '../lib/tools/tab-manager';
 import { handleScreenshot } from '../lib/tools/screenshot';
@@ -18,7 +19,9 @@ const MESSAGE_TYPE_MAP: Record<string, string> = {
  * Execute a tool via content script
  */
 async function executeContentScriptTool(tool: string, params: any): Promise<any> {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tab = params.tabId ? await chrome.tabs.get(params.tabId) : (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
+    if (params.targetUrl && tab?.url !== params.targetUrl) throw new Error('Target page changed');
+    if (/FormFiller|Fill Forms/.test(tool) && (!params.targetUrl || !params.tabId)) throw new Error('Select the intended tab before editing a form');
     if (!tab?.id) {
         throw new Error('No active tab found');
     }
@@ -41,8 +44,14 @@ async function executeContentScriptTool(tool: string, params: any): Promise<any>
         throw new Error('Cannot execute tools on browser-restricted pages.');
     }
 
-    console.log(`[Background] Executing ${tool} on tab ${tab.id}: ${tab.url}`);
-
+    if (params.action === 'attach') {
+        if (!Number.isSafeInteger(params.documentId)) throw new Error('Select a library document or choose a file manually');
+        const response=await privateRequest('/api/knowledge/'+params.documentId+'/download');
+        const bytes=new Uint8Array(await response.arrayBuffer());
+        const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)), b=>b.toString(16).padStart(2,'0')).join('');
+        if (digest !== params.checksum) throw new Error('Original changed. Request a new review.');
+        params={...params,file:{name:params.filename,type:params.fileType,bytes:Array.from(bytes)}};
+    }
     const sendMessage = async () => {
         return await chrome.tabs.sendMessage(tab.id!, {
             type: MESSAGE_TYPE_MAP[tool] || tool,
@@ -118,7 +127,7 @@ async function executeContentScriptTool(tool: string, params: any): Promise<any>
 
 // Tool Execution Dispatcher
 const handleToolExecution = async (data: ToolExecutionRequest) => {
-    console.log('[Background] Received tool execution request:', data);
+
     const { executionId, stepId, tool, params } = data;
 
     // Immediately acknowledge receipt so the server knows we're alive and listening
@@ -165,9 +174,10 @@ const handleToolExecution = async (data: ToolExecutionRequest) => {
             // Normalize parameters for mapped tools
             const normalizedParams = { ...params };
             if (tool === 'Browser Interaction_Read Page Content') {
-                normalizedParams.action = 'extract_text';
+                normalizedParams.action = params.action || 'extract_text';
             } else if (tool === 'Browser Interaction_Fill Forms') {
                 normalizedParams.action = 'fill_form';
+                normalizedParams.formData = params.formData || params.schema;
             }
             
             result = await executeContentScriptTool(tool, normalizedParams);
