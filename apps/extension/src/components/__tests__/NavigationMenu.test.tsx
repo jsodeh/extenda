@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { NavigationMenu } from '../NavigationMenu';
+import { fireEvent, render, screen } from '@testing-library/react';
+import NavigationMenu from '../NavigationMenu';
 
 describe('NavigationMenu', () => {
     it('renders all menu items', () => {
@@ -18,7 +18,9 @@ describe('NavigationMenu', () => {
 
         // Click the button to open menu
         const button = screen.getByRole('button');
-        button.click();
+        fireEvent.click(button);
+        fireEvent.click(getByText('History'));
+        expect(mockNavigate).toHaveBeenCalledWith('history');
 
         // This would require more complex interaction testing
         // Keeping it simple for now

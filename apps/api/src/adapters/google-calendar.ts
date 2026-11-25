@@ -162,7 +162,7 @@ export class GoogleCalendarAdapter extends BaseAdapter {
             case 'get_event':
                 const getRes = await calendar.events.get({
                     calendarId: 'primary',
-                    eventId: params.id
+                    eventId: params.eventId || params.id
                 });
                 return getRes.data;
 

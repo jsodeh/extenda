@@ -12,7 +12,7 @@ interface ApprovalGateProps {
     step: WorkflowStep;
     onApprove: () => void;
     onReject: () => void;
-    onEdit: (params: Record<string, any>) => void;
+    onEdit?: (params: Record<string, any>) => void;
 }
 
 export default function ApprovalGate({ step, onApprove, onReject, onEdit }: ApprovalGateProps) {
@@ -24,7 +24,7 @@ export default function ApprovalGate({ step, onApprove, onReject, onEdit }: Appr
     };
 
     const handleSave = () => {
-        onEdit(editedParams);
+        onEdit?.(editedParams);
         setIsEditing(false);
     };
 
@@ -66,7 +66,7 @@ export default function ApprovalGate({ step, onApprove, onReject, onEdit }: Appr
                         <div className="space-y-3">
                             <div className="flex items-center justify-between">
                                 <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Parameters</h4>
-                                {!isEditing && (
+                                {onEdit && !isEditing && (
                                     <button
                                         onClick={() => setIsEditing(true)}
                                         className="flex items-center gap-1.5 text-xs font-medium text-primary hover:opacity-80 transition-opacity"

@@ -4,7 +4,8 @@ import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:
  * Encrypts data using AES-256-GCM with a key derived from JWT_SECRET
  */
 export const encrypt = (data: string): string => {
-    const password = process.env.JWT_SECRET || 'default-secret-key';
+    const password = process.env.JWT_SECRET;
+    if (!password) throw new Error('JWT_SECRET must be configured');
     const salt = randomBytes(16);
     const key = scryptSync(password, salt, 32);
     const iv = randomBytes(12);
@@ -20,7 +21,8 @@ export const encrypt = (data: string): string => {
  * Decrypts data using AES-256-GCM with a key derived from JWT_SECRET
  */
 export const decrypt = (encryptedData: string): string => {
-    const password = process.env.JWT_SECRET || 'default-secret-key';
+    const password = process.env.JWT_SECRET;
+    if (!password) throw new Error('JWT_SECRET must be configured');
     const buffer = Buffer.from(encryptedData, 'base64');
 
     const salt = buffer.subarray(0, 16);

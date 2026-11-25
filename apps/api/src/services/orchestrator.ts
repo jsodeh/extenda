@@ -9,7 +9,8 @@ import { WorkflowDependencyResolver } from '../lib/workflow-dependencies.js';
 import { EVENTS_SERVER, EVENTS_CLIENT, User, Workflow, Execution, WorkflowStep, ToolExecutionResult, ToolAck } from '@extenda/shared';
 import { db } from '../db/index.js';
 import { workflows, executions, stepExecutions } from '../db/schema.js';
-import { eq } from 'drizzle-orm';
+import { approvalDigest, needsApproval } from '../lib/approval.js';
+import { and, eq, sql } from 'drizzle-orm';
 
 import { chatService } from './chat-service.js';
 import { agentRegistry } from '../agents/registry.js';
@@ -20,55 +21,13 @@ export class AgentOrchestrator {
     private activeExecutions: Map<string, Execution> = new Map();
     // EventEmitter-based tool result/ack routing (replaces broken io.on() pattern)
     private toolResultEmitter = new EventEmitter();
-    private toolAckEmitter = new EventEmitter();
-    
-    // Result Cache for fast tools (requestId -> Result)
-    // Prevents lost events if tool completes before Phase 2 listener is ready
-    private toolResultCache: Map<string, ToolExecutionResult> = new Map();
-
     setServer(io: Server) {
         this.io = io;
     }
 
-    /**
-     * Called by socket connection handler when a client sends tool:result.
-     * Routes the result to the correct pending executeClientTool() promise via EventEmitter.
-     */
-    handleToolResult(data: ToolExecutionResult) {
-        const requestId = `${data.executionId}_${data.stepId}`;
-        console.log(`[Orchestrator] Routing tool:result for requestId: ${requestId}`);
-        
-        // Cache the result in case the listener isn't ready yet
-        this.toolResultCache.set(requestId, data);
-        // Clear cache after 60 seconds to prevent leaks
-        setTimeout(() => this.toolResultCache.delete(requestId), 60000);
-
-        // Emit on the main channel (Phase 2 listens here)
-        this.toolResultEmitter.emit(requestId, data);
-        // Also emit on the early channel (Phase 1 ack-wait listens here for fast results)
-        this.toolResultEmitter.emit(`early:${requestId}`, data);
+    handleToolResult(owner: string, data: ToolExecutionResult) {
+        this.toolResultEmitter.emit(`${owner}_${data.executionId}_${data.stepId}`, data);
     }
-
-    /**
-     * Called by socket connection handler when a client sends tool:ack.
-     * Confirms the background worker received the tool:execute request.
-     */
-    handleToolAck(data: ToolAck) {
-        const requestId = `${data.executionId}_${data.stepId}`;
-        console.log(`[Orchestrator] Tool ack received for requestId: ${requestId}`);
-        this.toolAckEmitter.emit(requestId, data);
-    }
-
-    /**
-     * Called by socket connection handler when a client sends tool:progress.
-     * Extends the timeout for a running tool execution.
-     */
-    handleToolProgress(data: { executionId: string; stepId: string; message?: string }) {
-        const requestId = `${data.executionId}_${data.stepId}`;
-        console.log(`[Orchestrator] Tool progress for requestId: ${requestId}:`, data.message || 'working...');
-        this.toolResultEmitter.emit(`progress:${requestId}`, data);
-    }
-
 
     // Initialize Agents
     private initializeAgents() {
@@ -102,7 +61,6 @@ export class AgentOrchestrator {
 
     async plan(intent: string, user: User, sessionId: string, modelConfig?: ModelConfig): Promise<Workflow> {
         this.initializeAgents(); // Ensure initialized
-        console.log(`Planning workflow for intent: ${intent}`);
 
         // Get conversation history for context
         const history = await this.getConversationHistory(sessionId);
@@ -264,7 +222,6 @@ User Email: ${user.email}` : '';
                 timeoutPromise
             ]) as string;
 
-            console.log('Orchestrator Raw AI Response:', aiResponse);
 
             // Robust JSON extraction
             const jsonStart = aiResponse.indexOf('{');
@@ -293,9 +250,7 @@ User Email: ${user.email}` : '';
                     const pos = parseInt(position);
                     const start = Math.max(0, pos - 50);
                     const end = Math.min(cleanJson.length, pos + 50);
-                    console.error(`JSON error near position ${pos}:`, cleanJson.substring(start, end));
                 }
-                console.error('Full extracted JSON:', cleanJson);
                 throw new Error(`Failed to parse AI response as JSON: ${parseError.message}`);
             }
 
@@ -346,13 +301,13 @@ User Email: ${user.email}` : '';
             userId: execution.userId as any,
             status: execution.status,
             startedAt: execution.startedAt,
-            context: execution.context,
+            context: { sessionId: execution.context.sessionId, browserTarget: execution.context.browserTarget },
             result: execution.result,
             error: execution.error
         });
 
         // Notify client of plan
-        this.io?.emit(EVENTS_SERVER.WORKFLOW_PLAN, {
+        this.io?.to(`user:${execution.userId}`).emit(EVENTS_SERVER.WORKFLOW_PLAN, {
             workflowId: execution.workflowId,
             executionId: execution.id,
             plan: workflow
@@ -364,7 +319,7 @@ User Email: ${user.email}` : '';
         await this.runWorkflowLoop(execution, workflow, undefined, modelConfig);
     }
 
-    async resume(executionId: string, approved: boolean, modelConfig?: ModelConfig) {
+    async resume(executionId: string, owner: string, approved: boolean, digest: string, modelConfig?: ModelConfig, tokens?: any) {
         console.log(`Resuming execution ${executionId}, approved: ${approved}`);
         let execution = this.activeExecutions.get(executionId);
         let storedWorkflow: Workflow | undefined;
@@ -373,11 +328,7 @@ User Email: ${user.email}` : '';
         if (!execution) {
             console.log(`Execution ${executionId} not found in memory, fetching from DB...`);
             const dbExecution = await db.query.executions.findFirst({
-                where: eq(executions.id, executionId as any),
-                with: {
-                    // @ts-ignore
-                    workflow: true // Relies on Drizzle relation definitions if present, but let's query manually if needed
-                }
+                where: and(eq(executions.id, executionId), eq(executions.userId, owner), eq(executions.status, 'paused'))
             });
 
             if (!dbExecution) {
@@ -437,45 +388,23 @@ User Email: ${user.email}` : '';
             storedWorkflow = (execution as any)._workflow as Workflow;
         }
 
-        if (execution.status !== 'paused') {
-            // For robustness, if DB says paused but we are here, trust DB/Logic or just warn
-            // But valid resume assumes paused.
-            // throw new Error(`Execution ${executionId} is not paused`);
+        if (execution.userId !== owner || !storedWorkflow || storedWorkflow.userId !== owner || typeof approved !== 'boolean' || !digest) {
+            throw new Error('No matching approval');
         }
-
+        const status = approved ? 'running' : 'cancelled';
+        const [claimed] = await db.update(executions).set({ status }).where(and(
+            eq(executions.id, executionId), eq(executions.userId, owner), eq(executions.status, 'paused'),
+            sql`${executions.context}->>'approval' = ${digest}`
+        )).returning({ id: executions.id });
+        if (!claimed) throw new Error('This approval has expired or has already been used');
+        execution.status = status;
+        execution.context.modelConfig = modelConfig;
+        execution.context.tokens = tokens;
         if (approved) {
-            execution.status = 'running';
-            await db.update(executions).set({ status: 'running' }).where(eq(executions.id, executionId as any));
-
-            this.io?.emit('agent:status', { state: 'executing', message: 'Resuming workflow...' });
-
-            if (storedWorkflow) {
-                // Find the step we are causing to resume (the paused one)
-                // It's the first step that is NOT completed and requires approval
-                const steps = storedWorkflow.definition.steps;
-                const completedStepIds = new Set(
-                    execution.steps
-                        .filter(s => s.status === 'completed')
-                        .map(s => s.stepId)
-                );
-
-                const pausedStep = steps.find(s =>
-                    !completedStepIds.has(s.id) && s.requiresApproval
-                );
-
-                await this.runWorkflowLoop(execution, storedWorkflow, pausedStep?.id, modelConfig);
-            } else {
-                console.error("Workflow definition missing for resume");
-            }
-
+            await this.runWorkflowLoop(execution, storedWorkflow, digest, modelConfig);
         } else {
-            console.log(`Execution cancelled by user: ${executionId}`);
-            execution.status = 'cancelled';
-            await db.update(executions).set({ status: 'cancelled' }).where(eq(executions.id, executionId as any));
-
             this.activeExecutions.delete(executionId);
-            this.io?.emit('agent:status', { state: 'error', message: 'Workflow cancelled' });
-            this.io?.emit(EVENTS_SERVER.WORKFLOW_COMPLETE, { workflowId: execution.workflowId });
+            this.io?.to(`user:${owner}`).emit(EVENTS_SERVER.WORKFLOW_ERROR, { workflowId: execution.workflowId, error: 'Workflow cancelled' });
         }
     }
 
@@ -499,158 +428,45 @@ User Email: ${user.email}` : '';
                 }
             });
 
-            // Execute batches sequentially, steps within batch in parallel
+            if (failedSteps.size) throw new Error('A required step has already failed');
             for (const batch of batches) {
-                console.log(`Processing batch ${batch.batchIndex}`);
-
-                // Filter out steps that are already completed
-                const pendingSteps = batch.steps.filter(step => !stepResults.has(step.id));
-
-                if (pendingSteps.length === 0) {
-                    continue; // Batch completed
-                }
-
-                // HITL Step Check: specific steps in this batch requiring approval?
-                // We stop at the first unapproved step in the batch
-                const stepNeedingApproval = pendingSteps.find(step => step.requiresApproval);
-
-                if (stepNeedingApproval) {
-                    // Check if this specific step was just approved
-                    const wasJustApproved = approvedStepId === stepNeedingApproval.id;
-
-                    if (!wasJustApproved) {
-                        // PAUSE - first time encountering this approval gate
-                        console.log(`Workflow paused for approval at step: ${stepNeedingApproval.id}`);
-                        execution.status = 'paused';
-                        this.io?.emit('agent:status', { state: 'paused', message: `Waiting for approval: ${stepNeedingApproval.description}` });
-
-                        this.io?.emit(EVENTS_SERVER.WORKFLOW_PLAN, {
-                            workflowId: execution.workflowId,
-                            executionId: execution.id,
-                            plan: workflow,
-                            status: 'paused',
-                            pendingStepId: stepNeedingApproval.id
-                        });
-
-                        // Persist paused state
-                        await db.update(executions).set({ status: 'paused' }).where(eq(executions.id, execution.id as any));
-
-                        return; // PAUSE EXECUTION
-                    } else {
-                        // Step was just approved - continue execution
-                        console.log(`Step ${stepNeedingApproval.id} explicitly approved. Proceeding.`);
+                // Independent reads may run together. Review external writes individually.
+                const run = async (planned: WorkflowStep) => {
+                    if (execution.steps.some(s => s.stepId === planned.id && ['completed','skipped'].includes(s.status))) return;
+                    let selected = planned;
+                    if (planned.condition && !WorkflowDependencyResolver.evaluateCondition(planned.condition.expression, stepResults)) {
+                        const alternate = planned.condition.else?.[0];
+                        if (!alternate) return;
+                        selected = { ...alternate, id: planned.id };
                     }
-                }
-
-                // Execute pending steps in batch concurrently
-                const batchPromises = pendingSteps.map(async (step) => {
-                    // Check if any dependency failed - if so, skip this step
-                    const dependencies = WorkflowDependencyResolver.extractDependencies(step.params);
-                    const hasFailedDependency = dependencies.some(dep => failedSteps.has(dep));
-
-                    if (hasFailedDependency) {
-                        console.log(`Skipping step ${step.id} due to failed dependency`);
-                        failedSteps.add(step.id);
-
-                        // Notify client of skipped step
-                        this.io?.emit(EVENTS_SERVER.WORKFLOW_STEP_COMPLETE, {
-                            workflowId: execution.workflowId,
-                            stepId: step.id,
-                            status: 'failed',
-                            error: 'Skipped: dependency step failed'
-                        });
-
-                        return { status: 'skipped', reason: 'dependency failed' };
+                    const step = { ...selected, params: WorkflowDependencyResolver.injectResults(selected.params || {}, stepResults) };
+                    if (execution.context.browserTarget && /^(FormFiller|DOMReader|SmartClick|Screenshot|Browser Interaction_)/.test(step.tool || '')) {
+                        Object.assign(step.params, execution.context.browserTarget);
                     }
-
-                    // Inject results from previous steps
-                    const paramsWithResults = WorkflowDependencyResolver.injectResults(
-                        step.params,
-                        stepResults
-                    );
-
-                    // Check conditional execution
-                    if (step.condition) {
-                        const conditionMet = WorkflowDependencyResolver.evaluateCondition(
-                            step.condition.expression,
-                            stepResults
-                        );
-
-                        if (!conditionMet && step.condition.else) {
-                            // Execute else branch
-                            return this.executeStep(execution, step.condition.else[0], stepResults);
-                        } else if (!conditionMet) {
-                            // Skip step
-                            return { status: 'skipped', reason: 'condition not met' };
+                    if (workflow.definition.requiresApproval || step.requiresApproval || needsApproval(step.tool || '', step.params)) {
+                        const digest = approvalDigest(execution.userId, execution.id, step);
+                        if (digest !== approvedStepId) {
+                            await db.update(executions).set({ status: 'paused', context: {
+                                sessionId: execution.context.sessionId, browserTarget: execution.context.browserTarget, approval: digest
+                            } }).where(eq(executions.id, execution.id));
+                            execution.status = 'paused';
+                            this.io?.to(`user:${execution.userId}`).emit(EVENTS_SERVER.WORKFLOW_PLAN, {
+                                workflowId: workflow.id, executionId: execution.id, status: 'paused', approval: digest,
+                                pendingStepId: step.id, plan: { ...workflow, definition: { ...workflow.definition,
+                                    steps: steps.map(s => s.id === step.id ? step : s) } }
+                            });
+                            return;
                         }
+                        approvedStepId = undefined;
                     }
-
-                    try {
-                        return await this.executeStep(execution, { ...step, params: paramsWithResults }, stepResults);
-                    } catch (error) {
-                        console.error(`Step ${step.id} failed:`, error);
-
-                        // SOFT-FAIL: Data-fetching steps inject degraded context instead of aborting
-                        // This lets downstream AIProcessor steps run with a transparent error message
-                        const DATA_FETCH_TOOLS = [
-                            'DOMReader', 'Browser Interaction_Read Page Content',
-                            'GmailScraper', 'GmailAdapter', 'FormFiller', 'Browser Interaction_Fill Forms'
-                        ];
-                        const toolName = step.tool?.trim() || '';
-                        if (DATA_FETCH_TOOLS.includes(toolName) || toolName.toLowerCase().includes('read page')) {
-                            console.log(`[Orchestrator] Soft-failing data step ${step.id} (${toolName}) - workflow continues`);
-                            const errorMsg = (error as Error).message;
-                            // Inject error context so AIProcessor can explain the situation transparently
-                            return {
-                                _softFailed: true,
-                                error: errorMsg,
-                                fallbackContent: `[Data retrieval failed for ${toolName}: ${errorMsg}. Please inform the user about this limitation and work with whatever context is available.]`
-                            };
-                        }
-
-                        failedSteps.add(step.id);
-                        throw error; // Re-throw for truly fatal failures
-                    }
-                });
-
-                // Wait for all steps in batch to complete (use allSettled to continue even if some fail)
-                const settledResults = await Promise.allSettled(batchPromises);
-
-                // Store results and track failures
-                pendingSteps.forEach((step, index) => {
-                    const settled = settledResults[index];
-                    if (settled.status === 'fulfilled') {
-                        const value = settled.value;
-                        stepResults.set(step.id, value);
-                        // Soft-failed steps are stored as results (not failures) so workflow continues
-                        if (value && typeof value === 'object' && value._softFailed) {
-                            console.log(`[Orchestrator] Step ${step.id} soft-failed, workflow continues with degraded data`);
-                        }
-                    } else {
-                        failedSteps.add(step.id);
-                    }
-                });
-
-                // ABORT: If any step in this batch failed, skip all remaining batches
-                if (failedSteps.size > 0) {
-                    console.log(`Workflow aborting: ${failedSteps.size} step(s) failed. Skipping remaining steps.`);
-
-                    // Mark remaining steps as skipped
-                    for (const remainingBatch of batches.slice(batches.indexOf(batch) + 1)) {
-                        for (const remainingStep of remainingBatch.steps) {
-                            if (!stepResults.has(remainingStep.id)) {
-                                this.io?.emit(EVENTS_SERVER.WORKFLOW_STEP_COMPLETE, {
-                                    workflowId: execution.workflowId,
-                                    stepId: remainingStep.id,
-                                    status: 'failed',
-                                    error: 'Skipped: previous step failed'
-                                });
-                            }
-                        }
-                    }
-
-                    // Exit the batch loop
-                    break;
+                    stepResults.set(step.id, await this.executeStep(execution, step, stepResults));
+                };
+                const gated = (s: WorkflowStep) => workflow.definition.requiresApproval || s.requiresApproval || s.condition || needsApproval(s.tool || '', s.params);
+                const reads = await Promise.allSettled(batch.steps.filter(s => !gated(s)).map(run));
+                for (const result of reads) if (result.status === 'rejected') throw result.reason;
+                for (const step of batch.steps.filter(gated)) {
+                    await run(step);
+                    if (execution.status === 'paused') return;
                 }
             }
 
@@ -715,7 +531,6 @@ User Email: ${user.email}` : '';
                             const step = steps.find(s => s.id === bestStepId);
                             if (step && step.tool && UTILITY_TOOLS.includes(step.tool) && step.params?.message) {
                                 richSummary = step.params.message;
-                                console.log(`[Orchestrator] Using utility message fallback for summary: ${richSummary}`);
                             }
                         }
 
@@ -779,13 +594,14 @@ Generate a brief, friendly, conversational response summarizing the result for t
                 }
 
                 // Emit complete for secondary UI elements
-                this.io?.emit(EVENTS_SERVER.WORKFLOW_COMPLETE, {
+                this.io?.to(`user:${execution.userId}`).emit(EVENTS_SERVER.WORKFLOW_COMPLETE, {
                     workflowId: execution.workflowId
                 });
             }
         } catch (error) {
-            console.error('Workflow execution failed:', error);
-            this.io?.emit(EVENTS_SERVER.WORKFLOW_ERROR, {
+            execution.status = 'failed';
+            console.error('Workflow execution failed', execution.id);
+            this.io?.to(`user:${execution.userId}`).emit(EVENTS_SERVER.WORKFLOW_ERROR, {
                 workflowId: execution.workflowId,
                 error: error instanceof Error ? error.message : String(error)
             });
@@ -794,7 +610,7 @@ Generate a brief, friendly, conversational response summarizing the result for t
                 this.activeExecutions.delete(execution.id);
                 // Final update
                 await db.update(executions).set({
-                    status: 'completed',
+                    status: execution.status === 'failed' ? 'failed' : 'completed',
                     completedAt: new Date()
                 }).where(eq(executions.id, execution.id as any));
             }
@@ -815,11 +631,11 @@ Generate a brief, friendly, conversational response summarizing the result for t
         stepResults: Map<string, any>
     ): Promise<any> {
         // Notify step start
-        this.io?.emit(EVENTS_SERVER.WORKFLOW_STEP_START, { workflowId: execution.workflowId, step });
+        this.io?.to(`user:${execution.userId}`).emit(EVENTS_SERVER.WORKFLOW_STEP_START, { workflowId: execution.workflowId, step });
 
         // Granular status update
         const statusMsg = step.description || `Running ${step.tool}...`;
-        this.io?.emit('agent:status', { state: 'executing', message: statusMsg });
+        this.io?.to(`user:${execution.userId}`).emit('agent:status', { state: 'executing', message: statusMsg });
 
         // PERSISTENCE: Step Start
         // We use a query to check if it exists (retry capability?) or just insert? 
@@ -830,7 +646,7 @@ Generate a brief, friendly, conversational response summarizing the result for t
             stepId: step.id,
             status: 'running',
             startedAt: new Date()
-        } as any).catch(err => console.error("Failed to log step start", err));
+        } as any);
 
         try {
             console.log(`[Orchestrator] Executing step ${step.id} (DEPLOYMENT_CHECK_V3). Tool: '${step.tool}', Type: ${step.type}`);
@@ -873,7 +689,7 @@ Generate a brief, friendly, conversational response summarizing the result for t
                             // Mock context if not provided by adapter
                             result = await (toolDef as any).execute(step.params, { ...execution.context, user: { id: execution.userId } } as any);
                         } else {
-                            result = { status: 'skipped' };
+                            throw new Error(`Unknown tool: ${toolName}`);
                         }
                     }
                 }
@@ -881,8 +697,9 @@ Generate a brief, friendly, conversational response summarizing the result for t
                 throw new Error(`Step type ${step.type} not supported or tool missing`);
             }
 
+            if (result?.success === false || result?.error) throw new Error(result.error || 'Tool failed');
             // Notify step complete
-            this.io?.emit(EVENTS_SERVER.WORKFLOW_STEP_COMPLETE, {
+            this.io?.to(`user:${execution.userId}`).emit(EVENTS_SERVER.WORKFLOW_STEP_COMPLETE, {
                 workflowId: execution.workflowId,
                 stepId: step.id,
                 result
@@ -891,12 +708,7 @@ Generate a brief, friendly, conversational response summarizing the result for t
             // PERSISTENCE: Step Complete
             await db.update(stepExecutions)
                 .set({ status: 'completed', result: result as any, completedAt: new Date() })
-                .where(eq(stepExecutions.executionId, execution.id as any) && eq(stepExecutions.stepId, step.id))
-                .catch(err => {
-                    // Fallback if update fails (maybe row didn't exist? though we inserted above)
-                    // Or if we can't reliably match the row without the specific ID from insert.
-                    console.error("Failed to log step complete", err);
-                });
+                .where(and(eq(stepExecutions.executionId, execution.id), eq(stepExecutions.stepId, step.id)));
 
             // Update execution state for persistence/resume
             const execStep = execution.steps.find(s => s.stepId === step.id);
@@ -905,22 +717,10 @@ Generate a brief, friendly, conversational response summarizing the result for t
                 execStep.result = result;
             }
 
-            // Step completion logging (disabled to reduce UI clutter)
-            // Users see the result in the final workflow summary instead
-            if (execution.context?.sessionId) {
-                const resultSummary = typeof result === 'string' ? result : JSON.stringify(result).slice(0, 200) + '...';
-                console.log(`[AgentOrchestrator] Step ${step.id} completed: ${resultSummary}`);
-
-                // DISABLED: Step completion messages cluttered the UI
-                // const messageContent = `✅ Step Completed: **${step.tool}**\\nResult: ${resultSummary}`;
-                // await chatService.addMessage(execution.context.sessionId, 'assistant', messageContent, { stepId: step.id, type: 'step_result' });
-                // this.io?.to(execution.context.sessionId).emit('chat:response', { ... });
-            }
-
             return result;
         } catch (error) {
-            console.error(`Step ${step.id} failed:`, error);
-
+            await db.update(stepExecutions).set({ status: 'failed', completedAt: new Date() }).where(
+                and(eq(stepExecutions.executionId, execution.id), eq(stepExecutions.stepId, step.id)));
             // Log failure to chat history
             if (execution.context?.sessionId) {
                 const messageContent = `❌ Step Failed: **${step.tool}**\nError: ${(error as Error).message}`;
@@ -954,7 +754,7 @@ Generate a brief, friendly, conversational response summarizing the result for t
     }): Promise<any> {
         const { tool, params, userId, sessionId, socket } = options;
 
-        console.log(`[DirectExecution] Executing ${tool} with params:`, params);
+        if (needsApproval(tool, params)) throw new Error('This action requires workflow review');
 
         // Client-side tools (TabManager, Notifier, DOMReader, FormFiller, GmailScraper)
         const CLIENT_SIDE_TOOLS = ['TabManager', 'Notifier', 'DOMReader', 'FormFiller', 'GmailScraper', 'Screenshot', 'SmartClick'];
@@ -1002,216 +802,23 @@ Generate a brief, friendly, conversational response summarizing the result for t
             throw new Error('No io instance available');
         }
 
-        const requestId = `${executionId}_${stepId}`;
-        console.log(`[ToolExecution] Starting client tool ${tool} with requestId: ${requestId}`);
-
-        // Tool-specific execution timeouts (Phase 2)
-        const TOOL_TIMEOUTS: Record<string, number> = {
-            'DOMReader': 60000,
-            'Browser Interaction_Read Page Content': 60000,
-            'GmailScraper': 90000,
-            'Screenshot': 30000,
-            'Browser Interaction_Take Screenshot': 30000,
-            'FormFiller': 30000,
-            'Browser Interaction_Fill Forms': 30000,
-            'SmartClick': 30000,
-            'Browser Interaction_Smart Click': 30000,
-            'TabManager': 30000,
-            'Tab Management_Open New Tab': 30000,
-            'Tab Management_Switch Tabs': 30000,
-            'Tab Management_Close Tab': 30000,
-            'Notifier': 10000
-        };
-        const executionTimeoutMs = TOOL_TIMEOUTS[tool] || 30000;
-
-        // --- PHASE 0: Connection-aware smart waiting ---
-        // Check if any sockets exist in the user's room. If not, wait for reconnection.
-        if (userId) {
-            const room = this.io.sockets.adapter.rooms.get(`user:${userId}`);
-            const socketsInRoom = room?.size || 0;
-
-            if (socketsInRoom === 0) {
-                console.warn(`[ToolExecution] No sockets in room user:${userId}. Waiting for reconnection...`);
-                this.io.to(`user:${userId}`).emit('agent:status', {
-                    state: 'waiting',
-                    message: 'Waiting for browser extension to reconnect...'
-                });
-
-                // Wait up to 30s for a socket to join the room
-                const reconnected = await this.waitForRoomConnection(userId, 30000);
-                if (!reconnected) {
-                    throw new Error(
-                        'Your browser extension lost connection and did not reconnect within 30 seconds. ' +
-                        'Please check your network connection and ensure the Extenda extension is active, then try again.'
-                    );
-                }
-                console.log(`[ToolExecution] Socket reconnected in room user:${userId}. Proceeding.`);
-            }
-        }
-
-        // --- Helper: Send tool:execute to the user's room ---
-        const emitToolExecute = () => {
-            const payload = { executionId, stepId, tool, params };
-            if (userId) {
-                console.log(`[ToolExecution] Broadcasting tool:execute to room user:${userId}`);
-                this.io!.to(`user:${userId}`).emit(EVENTS_SERVER.TOOL_EXECUTE, payload);
-            } else {
-                console.warn('[ToolExecution] No userId - using broadcast fallback');
-                this.io!.emit(EVENTS_SERVER.TOOL_EXECUTE, payload);
-            }
-        };
-
-        // --- PHASE 1: Ack with reconnect resilience ---
-        // Try up to 2 times to get an ack. If connection flickers between attempts, re-send.
-        const ACK_TIMEOUT_MS = 15000;
-        const MAX_ACK_ATTEMPTS = 2;
-        let ackReceived = false;
-
-        for (let attempt = 1; attempt <= MAX_ACK_ATTEMPTS; attempt++) {
-            emitToolExecute();
-
-            ackReceived = await new Promise<boolean>((resolveAck) => {
-                const ackHandler = () => {
-                    clearTimeout(ackTimer);
-                    resolveAck(true);
-                };
-
-                this.toolAckEmitter.once(requestId, ackHandler);
-
-                // Also resolve immediately if we get the full result before the ack
-                // (very fast tools may return before ack timeout)
-                const earlyResultHandler = () => {
-                    clearTimeout(ackTimer);
-                    this.toolAckEmitter.off(requestId, ackHandler);
-                    resolveAck(true); // Result came in, no need for ack
-                };
-                // Peek at result emitter without consuming - just check if result arrives during ack phase
-                this.toolResultEmitter.once(`early:${requestId}`, earlyResultHandler);
-
-                const ackTimer = setTimeout(() => {
-                    this.toolAckEmitter.off(requestId, ackHandler);
-                    this.toolResultEmitter.off(`early:${requestId}`, earlyResultHandler);
-                    resolveAck(false);
-                }, ACK_TIMEOUT_MS);
-            });
-
-            if (ackReceived) {
-                console.log(`[ToolExecution] Ack received for ${tool} (attempt ${attempt})`);
-                break;
-            }
-
-            // No ack - check if the connection dropped and came back
-            if (attempt < MAX_ACK_ATTEMPTS && userId) {
-                const room = this.io.sockets.adapter.rooms.get(`user:${userId}`);
-                const stillConnected = (room?.size || 0) > 0;
-
-                if (stillConnected) {
-                    console.warn(`[ToolExecution] No ack but socket still connected. Retrying (attempt ${attempt + 1})...`);
-                    // Connection might have flickered - wait briefly then retry
-                    await new Promise(r => setTimeout(r, 2000));
-                } else {
-                    console.warn(`[ToolExecution] No ack and no sockets in room. Waiting for reconnect...`);
-                    const reconnected = await this.waitForRoomConnection(userId, 15000);
-                    if (!reconnected) {
-                        throw new Error(
-                            'Browser extension is not responding. The connection may have dropped. ' +
-                            'Please ensure the Extenda extension is active and try again.'
-                        );
-                    }
-                    console.log(`[ToolExecution] Reconnected. Retrying tool:execute...`);
-                }
-            }
-        }
-
-        if (!ackReceived) {
-            throw new Error(
-                `Browser extension did not acknowledge the ${tool} request after ${MAX_ACK_ATTEMPTS} attempts. ` +
-                'The extension may need to be reloaded. Please refresh the extension and try again.'
-            );
-        }
-
-        // --- PHASE 2: Wait for actual tool result ---
-        // First check if result is already in cache (race condition fix)
-        const cachedResult = this.toolResultCache.get(requestId);
-        if (cachedResult) {
-            console.log(`[ToolExecution] Found cached result for ${tool} (fast execution)`);
-            this.toolResultCache.delete(requestId);
-            if (cachedResult.status === 'success') return cachedResult.result;
-            throw new Error(cachedResult.error || 'Tool execution failed');
-        }
-
-        return new Promise<any>((resolve, reject) => {
-            let currentTimeoutMs = executionTimeoutMs;
-            let timeoutHandle: ReturnType<typeof setTimeout>;
-            let settled = false;
-
-            const cleanup = () => {
-                settled = true;
-                clearTimeout(timeoutHandle);
-                this.toolResultEmitter.off(requestId, handleResult);
-                this.toolResultEmitter.off(`progress:${requestId}`, handleProgress);
+        if (!userId) throw new Error('Browser connection requires an owner');
+        const room = this.io.sockets.adapter.rooms.get(`browser:${userId}`);
+        if (!room || room.size !== 1) throw new Error('Connect one browser extension to execute this action');
+        const [target] = room;
+        const key = `${userId}_${executionId}_${stepId}`;
+        return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => {
+                this.toolResultEmitter.off(key, receive);
+                reject(new Error('Browser result unavailable. Check the page before trying again.'));
+            }, 90000);
+            const receive = (data: ToolExecutionResult) => {
+                clearTimeout(timer);
+                if (data.status === 'success' && data.result?.success !== false) resolve(data.result);
+                else reject(new Error(data.error || data.result?.error || 'Browser action failed'));
             };
-
-            const handleResult = (data: ToolExecutionResult) => {
-                if (settled) return;
-                console.log(`[ToolExecution] Result received for ${tool} (requestId: ${requestId})`);
-                cleanup();
-
-                if (data.status === 'success') {
-                    resolve(data.result);
-                } else {
-                    reject(new Error(data.error || 'Tool execution failed'));
-                }
-            };
-
-            // Progress heartbeats reset the timeout - if the tool is still working, let it work
-            const handleProgress = (data: { message?: string }) => {
-                if (settled) return;
-                console.log(`[ToolExecution] Progress heartbeat for ${tool}: ${data.message || 'still working'}`);
-                clearTimeout(timeoutHandle);
-                // Reset timeout with same duration
-                timeoutHandle = setTimeout(onTimeout, currentTimeoutMs);
-            };
-
-            const onTimeout = () => {
-                if (settled) return;
-                console.error(`[ToolExecution] Timeout for ${tool} after ${currentTimeoutMs}ms (requestId: ${requestId})`);
-                cleanup();
-                reject(new Error(
-                    `Tool execution timed out after ${currentTimeoutMs / 1000}s (${tool}). ` +
-                    'The operation took too long to complete.'
-                ));
-            };
-
-            // Listen for result via EventEmitter (routed by handleToolResult)
-            this.toolResultEmitter.on(requestId, handleResult);
-            this.toolResultEmitter.on(`progress:${requestId}`, handleProgress);
-
-            // Start the execution timeout
-            timeoutHandle = setTimeout(onTimeout, currentTimeoutMs);
-        });
-    }
-
-    /**
-     * Wait for at least one socket to join a user's room (reconnection monitoring).
-     * Returns true if a socket connected within the timeout, false otherwise.
-     */
-    private waitForRoomConnection(userId: string, timeoutMs: number): Promise<boolean> {
-        return new Promise((resolve) => {
-            const roomName = `user:${userId}`;
-            const checkInterval = setInterval(() => {
-                const room = this.io?.sockets.adapter.rooms.get(roomName);
-                if (room && room.size > 0) {
-                    clearInterval(checkInterval);
-                    clearTimeout(timeoutHandle);
-                    resolve(true);
-                }
-            }, 1000); // Check every second
-
-            const timeoutHandle = setTimeout(() => {
-                clearInterval(checkInterval);
-                resolve(false);
-            }, timeoutMs);
+            this.toolResultEmitter.once(key, receive);
+            this.io!.to(target).emit(EVENTS_SERVER.TOOL_EXECUTE, { executionId, stepId, tool, params });
         });
     }
 

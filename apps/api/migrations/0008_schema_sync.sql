@@ -30,6 +30,14 @@ CREATE TABLE IF NOT EXISTS "user_preferences" (
 );
 CREATE INDEX IF NOT EXISTS "idx_user_preferences_user" ON "user_preferences"("user_id");
 
+-- 0002 used UUID documents. Preserve that table before creating integer chunk references.
+DO $$ BEGIN
+    IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema=current_schema()
+        AND table_name='documents' AND column_name='id' AND data_type='uuid') THEN
+        ALTER TABLE documents RENAME TO documents_legacy_uuid;
+    END IF;
+END $$;
+
 -- From 0005_knowledgebase
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE IF NOT EXISTS "documents" (

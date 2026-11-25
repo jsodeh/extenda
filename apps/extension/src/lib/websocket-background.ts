@@ -12,7 +12,7 @@ class BackgroundWebSocketClient {
 
     async connect(token: string) {
         // If already connected with same token, skip
-        if (this.socket?.connected && this.currentToken === token) {
+        if (this.socket?.active && this.currentToken === token) {
             console.log('[BgWS] Already connected');
             return;
         }
@@ -36,13 +36,14 @@ class BackgroundWebSocketClient {
             reconnectionAttempts: 10,
             reconnectionDelay: 1000,
             timeout: 60000,
-            auth: { token }
+            auth: { token, role: 'browser' }
         });
 
+        this.replayListeners();
         this.socket.on('connect', () => {
             console.log('[BgWS] Connected! Socket ID:', this.socket?.id);
             // Re-attach all stored listeners after successful connection
-            this.replayListeners();
+
         });
 
         this.socket.on('disconnect', (reason) => {

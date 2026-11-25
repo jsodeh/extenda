@@ -81,7 +81,7 @@ function AppContent() {
     const [agentStatus, setAgentStatus] = useState<{ state: string; message: string } | null>(null);
     const [currentWorkflow, setCurrentWorkflow] = useState<{ id: string; steps: WorkflowStep[] } | null>(null);
     const [showOnboarding, setShowOnboarding] = useState(false);
-    const [pendingApproval, setPendingApproval] = useState<WorkflowStep | null>(null);
+    const [pendingApproval, setPendingApproval] = useState<(WorkflowStep & { approval: string; executionId: string }) | null>(null);
     const [showRegister, setShowRegister] = useState(false);
     const [currentExecutionId, setCurrentExecutionId] = useState<string | null>(null);
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -174,7 +174,8 @@ function AppContent() {
         }
 
         wsClient.emit('workflow:resume', {
-            executionId: currentExecutionId,
+            executionId: pendingApproval?.executionId,
+            approval: pendingApproval?.approval,
             approved,
             stepId: pendingApproval?.id,
             modelConfig
@@ -364,6 +365,7 @@ function AppContent() {
                     : incomingSteps[0];
 
                 setPendingApproval({
+                    executionId: data.executionId, approval: data.approval,
                     id: targetStep?.id || 'gate-' + Date.now(),
                     tool: targetStep?.tool || 'Approval Required',
                     description: targetStep?.description || 'Review the plan above before proceeding.',
@@ -719,6 +721,8 @@ function AppContent() {
                                 />
                             ))
                         )}
+                        {pendingApproval && <ApprovalGate key={pendingApproval.approval} step={pendingApproval}
+                            onApprove={() => handleApproval(true)} onReject={() => handleApproval(false)} />}
                         <div ref={messagesEndRef} />
 
                         {/* Thinking Indicator */}

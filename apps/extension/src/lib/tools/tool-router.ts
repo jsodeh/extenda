@@ -232,7 +232,8 @@ export async function executeTool(
     args: Record<string, any>,
     context: ToolExecutionContext
 ): Promise<any> {
-    console.log(`[ToolRouter] Executing ${name}:`, args);
+    if (['smart_click','fill_form','send_email','create_calendar_event','send_slack_message','create_notion_page','close_tab'].includes(name)
+        && !window.confirm(`Approve ${name}?\n${JSON.stringify(args, null, 2)}`)) throw new Error('Action declined');
 
     // Handle instant tools
     if (name === 'get_current_time') {
@@ -262,7 +263,7 @@ async function executeClientTool(name: string, args: Record<string, any>): Promi
         'smart_click': { handler: 'SmartClick', params: args },
         'screenshot': { handler: 'Screenshot', params: {} },
         'read_page': { handler: 'DOMReader', params: { action: 'read', ...args } },
-        'fill_form': { handler: 'FormFiller', params: { action: 'fill', fields: [args] } },
+        'fill_form': { handler: 'FormFiller', params: { action: 'fill_text', selector: args.selector, value: args.value } },
         'notify': { handler: 'Notifier', params: { action: 'notify', ...args } }
     };
 

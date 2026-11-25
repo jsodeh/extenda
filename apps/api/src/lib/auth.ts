@@ -18,10 +18,11 @@ export const authMiddleware = async (c: Context, next: Next) => {
     }
 
     const token = authHeader.substring(7);
-    const jwtSecret = process.env.JWT_SECRET || 'dev-secret-key';
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) throw new Error('JWT_SECRET must be configured');
 
     try {
-        const payload = await verify(token, jwtSecret);
+        const payload = await verify(token, jwtSecret, 'HS256');
         const userId = payload.userId as string;
 
         if (!userId) {
@@ -38,9 +39,10 @@ export const authMiddleware = async (c: Context, next: Next) => {
 
         // Set user in context for downstream routes
         c.set('user', user);
-        await next();
+
     } catch (err) {
         console.error('Auth Middleware Error:', err);
         return c.json({ error: 'Unauthorized: Session expired or invalid' }, 401);
     }
+    await next();
 };

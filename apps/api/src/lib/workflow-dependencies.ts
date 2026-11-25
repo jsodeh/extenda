@@ -2,7 +2,7 @@
  * Workflow dependency resolution and parallel execution utilities
  */
 
-import { WorkflowStep } from '@extenda/shared';
+import type { WorkflowStep } from '@extenda/shared';
 
 export interface StepBatch {
     steps: WorkflowStep[];
@@ -94,7 +94,7 @@ export class WorkflowDependencyResolver {
         const unifiedRegex = /(\${([^{}]+)})|(\{\{([^{}]+)\}\})/g;
         const matches = Array.from(paramsStr.matchAll(unifiedRegex));
 
-        console.log(`[extractDependencies] Params: ${paramsStr.substring(0, 200)}...`);
+
         console.log(`[extractDependencies] Found ${matches.length} matches`);
 
         for (const m of matches) {
@@ -303,40 +303,19 @@ export class WorkflowDependencyResolver {
         expression: string,
         stepResults: Map<string, any>
     ): boolean {
-        try {
-            // Replace ${step.result} with actual values
-            let evalExpr = expression;
-            const matches = expression.matchAll(/\$\{([^}]+)\}/g);
-
-            for (const match of matches) {
-                const value = this.getValueFromPath(match[1], stepResults);
-                evalExpr = evalExpr.replace(match[0], JSON.stringify(value));
-            }
-
-            // Safe evaluation (very basic, consider using a proper expression evaluator)
-            // For now, support simple comparisons
-            if (evalExpr.includes('===')) {
-                const [left, right] = evalExpr.split('===').map(s => s.trim());
-                return eval(left) === eval(right);
-            }
-            if (evalExpr.includes('!==')) {
-                const [left, right] = evalExpr.split('!==').map(s => s.trim());
-                return eval(left) !== eval(right);
-            }
-            if (evalExpr.includes('>')) {
-                const [left, right] = evalExpr.split('>').map(s => s.trim());
-                return eval(left) > eval(right);
-            }
-            if (evalExpr.includes('<')) {
-                const [left, right] = evalExpr.split('<').map(s => s.trim());
-                return eval(left) < eval(right);
-            }
-
-            // Default: try to evaluate as boolean
-            return Boolean(eval(evalExpr));
-        } catch (error) {
-            console.error('Condition evaluation failed:', error);
-            return false;
+        const operand = (source: string) => {
+            const variable = /^\$\{([^{}]+)\}$/.exec(source.trim());
+            return variable ? this.getValueFromPath(variable[1], stepResults) : JSON.parse(source.trim());
+        };
+        const comparison = /^(.+?)\s*(===|!==|>|<)\s*(.+)$/.exec(expression);
+        if (!comparison) return Boolean(operand(expression));
+        const left = operand(comparison[1]);
+        const right = operand(comparison[3]);
+        switch (comparison[2]) {
+            case '===': return left === right;
+            case '!==': return left !== right;
+            case '>': return left > right;
+            default: return left < right;
         }
     }
 }

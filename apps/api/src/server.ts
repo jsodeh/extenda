@@ -39,6 +39,7 @@ app.route('/oauth', oauth);
 app.route('/oauth/auth', authOAuth);
 app.route('/api/preferences', preferences);
 app.route('/api/templates', templates);
+app.route('/api/knowledge', knowledge);
 app.route('/knowledge', knowledge);
 app.route('/vision', vision);
 app.route('/api/config', config);

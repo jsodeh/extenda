@@ -1,4 +1,7 @@
-import { WorkflowDependencyResolver, WorkflowStep } from '../workflow-dependencies';
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import type { WorkflowStep } from '@extenda/shared';
+import { WorkflowDependencyResolver } from '../workflow-dependencies.js';
 
 describe('WorkflowDependencyResolver', () => {
     describe('resolveDependencies', () => {
@@ -11,10 +14,10 @@ describe('WorkflowDependencyResolver', () => {
 
             const batches = WorkflowDependencyResolver.resolveDependencies(steps);
 
-            expect(batches).toHaveLength(3);
-            expect(batches[0].steps.map(s => s.id)).toEqual(['A']);
-            expect(batches[1].steps.map(s => s.id)).toEqual(['B']);
-            expect(batches[2].steps.map(s => s.id)).toEqual(['C']);
+            assert.equal(batches.length, 3);
+            assert.deepEqual(batches[0].steps.map(s => s.id), ['A']);
+            assert.deepEqual(batches[1].steps.map(s => s.id), ['B']);
+            assert.deepEqual(batches[2].steps.map(s => s.id), ['C']);
         });
 
         it('should identify parallel steps', () => {
@@ -27,9 +30,9 @@ describe('WorkflowDependencyResolver', () => {
 
             const batches = WorkflowDependencyResolver.resolveDependencies(steps);
 
-            expect(batches).toHaveLength(2);
-            expect(batches[0].steps).toHaveLength(3); // A, B, C in parallel
-            expect(batches[1].steps.map(s => s.id)).toEqual(['D']);
+            assert.equal(batches.length, 2);
+            assert.equal(batches[0].steps.length, 3); // A, B, C in parallel
+            assert.deepEqual(batches[1].steps.map(s => s.id), ['D']);
         });
 
         it('should detect circular dependencies', () => {
@@ -38,9 +41,9 @@ describe('WorkflowDependencyResolver', () => {
                 { id: 'B', type: 'tool', tool: 'test', dependencies: ['A'] }
             ];
 
-            expect(() => {
+            assert.throws(() => {
                 WorkflowDependencyResolver.resolveDependencies(steps);
-            }).toThrow('Circular dependency');
+            }, /Circular dependency/);
         });
     });
 
@@ -51,7 +54,7 @@ describe('WorkflowDependencyResolver', () => {
 
             const result = WorkflowDependencyResolver.injectResults(params, stepResults);
 
-            expect(result.email).toBe('test@example.com');
+            assert.equal(result.email, 'test@example.com');
         });
 
         it('should inject nested result', () => {
@@ -60,7 +63,7 @@ describe('WorkflowDependencyResolver', () => {
 
             const result = WorkflowDependencyResolver.injectResults(params, stepResults);
 
-            expect(result.email).toBe('test@example.com');
+            assert.equal(result.email, 'test@example.com');
         });
     });
 
@@ -71,7 +74,7 @@ describe('WorkflowDependencyResolver', () => {
 
             const result = WorkflowDependencyResolver.evaluateCondition(expression, stepResults);
 
-            expect(result).toBe(true);
+            assert.equal(result, true);
         });
 
         it('should evaluate greater than condition', () => {
@@ -80,7 +83,7 @@ describe('WorkflowDependencyResolver', () => {
 
             const result = WorkflowDependencyResolver.evaluateCondition(expression, stepResults);
 
-            expect(result).toBe(true);
+            assert.equal(result, true);
         });
     });
 });

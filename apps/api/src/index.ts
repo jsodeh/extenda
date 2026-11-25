@@ -1,3 +1,4 @@
+import { needsApproval } from './lib/approval.js';
 import './env.js'; // Ensure env vars are loaded before other imports
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
@@ -16,7 +17,7 @@ import { Server } from 'socket.io';
 import { EVENTS_CLIENT, EVENTS_SERVER, WorkflowStartPayload, WorkflowApprovePayload, WorkflowResumePayload, Execution } from '@extenda/shared';
 import { eq } from 'drizzle-orm';
 import { runMigrations } from './db/migrate.js';
-import { repairDatabaseSync } from './db/repair-sync.js';
+
 import app from './server.js';
 import { orchestrator } from './services/orchestrator.js';
 import { intentClassifier } from './services/intent-classifier.js';
@@ -61,18 +62,12 @@ app.route('/oauth/auth', authOAuth);
 console.log(`Initializing server on port ${port}...`);
 
 // Initialize Socket.IO
+await runMigrations();
 const server = serve({
     fetch: app.fetch,
     port,
     hostname: '0.0.0.0'
 }, async (info) => {
-    // Run migrations on startup
-    try {
-        await runMigrations();
-        await repairDatabaseSync();
-    } catch (e) {
-        console.error('Migration or Repair failed:', e);
-    }
     console.log(`Listening on http://${info.address}:${info.port}`);
 });
 console.log('Server initialized.');
@@ -109,8 +104,9 @@ io.use(async (socket, next) => {
         }
 
         // Verify JWT
-        const jwtSecret = process.env.JWT_SECRET || 'dev-secret-key';
-        const payload = await verify(token, jwtSecret);
+        const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) throw new Error('JWT_SECRET must be configured');
+        const payload = await verify(token, jwtSecret, 'HS256');
         const userId = payload.userId as string;
 
         if (!userId) {
@@ -139,10 +135,10 @@ io.use(async (socket, next) => {
 
 io.on('connection', (socket) => {
     const user = (socket as any).user;
-    console.log('Client connected:', socket.id, 'User:', user.email);
 
     // Join user-specific room so all user's sockets (sidepanel + background) receive events
     socket.join(`user:${user.id}`);
+    if (socket.handshake.auth.role === 'browser') socket.join(`browser:${user.id}`);
     console.log(`Socket ${socket.id} joined room user:${user.id}`);
 
     // Forward tool execution results from background worker to orchestrator
@@ -150,23 +146,10 @@ io.on('connection', (socket) => {
     // because io.on() only handles 'connection' events, not client-emitted events.
     socket.on('tool:result', (data: any) => {
         console.log(`[Socket] tool:result from ${socket.id}:`, data.executionId, data.stepId, data.status);
-        orchestrator.handleToolResult(data);
-    });
-
-    // Forward tool acknowledgements (Phase 1 of 2-phase timeout)
-    socket.on('tool:ack', (data: any) => {
-        console.log(`[Socket] tool:ack from ${socket.id}:`, data.executionId, data.stepId);
-        orchestrator.handleToolAck(data);
-    });
-
-    // Forward tool progress heartbeats (extends Phase 2 timeout for long-running tools)
-    socket.on('tool:progress', (data: any) => {
-        console.log(`[Socket] tool:progress from ${socket.id}:`, data.executionId, data.stepId);
-        orchestrator.handleToolProgress(data);
+        if (socket.handshake.auth.role === 'browser') orchestrator.handleToolResult(user.id, data);
     });
 
     socket.on(EVENTS_CLIENT.WORKFLOW_START, async (data: WorkflowStartPayload) => {
-        console.log('Received workflow start request:', data);
 
         // Safety timeout for entire request (increased to 5 minutes)
         const timeoutHandle = setTimeout(() => {
@@ -186,6 +169,7 @@ io.on('connection', (socket) => {
                 sessionId = session.id;
                 socket.emit('session:created', { sessionId });
             }
+            if ((await chatService.getSession(sessionId))?.userId !== user.id) throw new Error('Chat session unavailable');
             socket.join(sessionId);
 
             // Get conversation history BEFORE classification (do not include current message yet)
@@ -235,7 +219,7 @@ RULES:
             }
 
             // TIER 2: Simple Commands - Direct Execution
-            if (quickClassification.type === 'simple_command' && quickClassification.tool) {
+            if (quickClassification.type === 'simple_command' && quickClassification.tool && !needsApproval(quickClassification.tool, quickClassification.params)) {
                 console.log('[DEBUG] Simple command detected:', quickClassification.tool);
 
                 socket.emit('agent:status', { state: 'executing', message: 'Executing...' });
@@ -353,7 +337,7 @@ RULES:
                 })),
                 context: {
                     ...context,
-                    sessionId: sessionId
+                    sessionId: sessionId, browserTarget: data.context?.browserTarget
                 },
                 result: undefined,
                 error: undefined
@@ -377,9 +361,10 @@ RULES:
     });
 
     socket.on(EVENTS_CLIENT.WORKFLOW_RESUME, async (data: WorkflowResumePayload) => {
-        console.log('Received workflow resume request:', data);
         try {
-            await orchestrator.resume(data.executionId, data.approved, data.modelConfig);
+            await orchestrator.resume(data.executionId, user.id, data.approved, data.approval, data.modelConfig, {
+                access_token: user.googleAccessToken, refresh_token: user.googleRefreshToken
+            });
         } catch (error) {
             console.error('Workflow resume failed:', error);
             socket.emit(EVENTS_SERVER.WORKFLOW_ERROR, { error: `Failed to resume: ${(error as Error).message}` });
@@ -389,75 +374,6 @@ RULES:
     socket.on('disconnect', () => {
         console.log('Client disconnected:', socket.id);
     });
-});
-
-// DEBUG: Temporary endpoints to troubleshoot migration failure
-app.get('/api/debug/info', async (c) => {
-    try {
-        const { fileURLToPath } = await import('url');
-        const { dirname, resolve } = await import('path');
-        const { readdir } = await import('fs/promises');
-
-        const __filename = fileURLToPath(import.meta.url);
-        const __dirname = dirname(__filename);
-        const migrationsPath = resolve(__dirname, '../migrations'); // assuming dist/index.js -> dist/../migrations = migrations
-
-        let files: string[] = [];
-        try {
-            files = await readdir(migrationsPath);
-        } catch (e) {
-            files = [`Error reading dir: ${(e as Error).message}`];
-        }
-
-        return c.json({
-            cwd: process.cwd(),
-            __dirname,
-            migrationsPath,
-            files
-        });
-    } catch (e) {
-        return c.json({ error: (e as Error).message }, 500);
-    }
-});
-
-app.post('/api/debug/force-sync', async (c) => {
-    try {
-        const sql = `
-            CREATE TABLE IF NOT EXISTS "chat_sessions" (
-                "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                "user_id" UUID REFERENCES "users"("id") ON DELETE CASCADE,
-                "title" TEXT NOT NULL DEFAULT 'New Chat',
-                "created_at" TIMESTAMP DEFAULT NOW(),
-                "updated_at" TIMESTAMP DEFAULT NOW()
-            );
-
-            CREATE TABLE IF NOT EXISTS "chat_messages" (
-                "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                "session_id" UUID REFERENCES "chat_sessions"("id") ON DELETE CASCADE,
-                "role" TEXT NOT NULL,
-                "content" TEXT NOT NULL,
-                "metadata" JSONB,
-                "created_at" TIMESTAMP DEFAULT NOW()
-            );
-        `;
-        // Execute raw SQL using Drizzle's db instance if it exposes execute, or raw client
-        // Using the pg client directly via db session if possible, or just re-importing pool
-        // Since we don't have direct access to pool here easily, let's use db.execute if using postgresjs or aws-data-api, 
-        // but for node-postgres it's usually db.execute(sql`...`). 
-        // Let's assume db.execute works with sql template tag.
-
-        // Actually, db.execute is for prepared statements. 
-        // Let's try to import the pool or just use a new client for this debug hack.
-
-        const { Pool } = await import('pg');
-        const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-        await pool.query(sql);
-        await pool.end();
-
-        return c.json({ status: 'Tables created manually' });
-    } catch (e) {
-        return c.json({ error: (e as Error).message }, 500);
-    }
 });
 
 // REST Routes
@@ -470,10 +386,7 @@ app.get('/api/history', authMiddleware, async (c) => {
             where: eq(executions.userId, userId as any),
             orderBy: (executions, { desc }) => [desc(executions.startedAt)],
             limit: 20,
-            with: {
-                // @ts-ignore
-                workflow: true
-            }
+
         });
 
         // Manual join if relation not set up in schema types correctly, but let's assume it works or try safe fallback
@@ -507,7 +420,7 @@ app.get('/api/history', authMiddleware, async (c) => {
                 stepsCount
             };
         }));
-
+        return c.json(history);
     } catch (error) {
         console.error('History fetch error:', error);
         return c.json({ error: 'Internal Server Error' }, 500);
@@ -526,12 +439,13 @@ app.get('/api/chat/sessions', authMiddleware, async (c) => {
     }
 });
 
-app.get('/api/chat/sessions/:sessionId', async (c) => {
+app.get('/api/chat/sessions/:sessionId', authMiddleware, async (c) => {
     try {
         const authHeader = c.req.header('Authorization');
         if (!authHeader) return c.json({ error: 'Unauthorized' }, 401);
 
         const sessionId = c.req.param('sessionId');
+        if ((await chatService.getSession(sessionId))?.userId !== c.get('user').id) return c.json({ error: 'Session unavailable' }, 404);
         const messages = await chatService.getMessages(sessionId);
         return c.json(messages);
     } catch (error) {
