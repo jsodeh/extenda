@@ -5,7 +5,7 @@ services:
     plan: free # Free tier as requested
     region: ohio # Default
     buildCommand: pnpm install && pnpm run build
-    startCommand: pnpm run start
+    startCommand: pnpm --filter api start
     envVars:
       - key: PORT
         value: 10000
@@ -27,4 +27,19 @@ services:
         sync: false
       - key: GOOGLE_AUTH_REDIRECT_URI
         sync: false
-    healthCheckPath: /api/debug/info # Updated based on index.ts
+    healthCheckPath: /health
+  - type: cron
+    name: extenda-scheduler
+    runtime: node
+    schedule: "* * * * *"
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @extenda/shared build && pnpm --filter api build
+    startCommand: node apps/api/dist/scripts/run-scheduler.js
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_AUTH_CLIENT_SECRET
+        sync: false

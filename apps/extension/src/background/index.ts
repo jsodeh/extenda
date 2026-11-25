@@ -293,3 +293,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 console.log('[Background] Extenda Background Service Worker Initialized (Clean Build)');
+
+chrome.alarms.create('personal-reminders',{periodInMinutes:1});
+chrome.alarms.onAlarm.addListener(async alarm=>{
+    if (alarm.name !== 'personal-reminders') return;
+    try {
+        const reminders=await (await privateRequest('/api/schedule/reminders',{method:'POST'})).json();
+        for (const reminder of reminders) await chrome.notifications.create({type:'basic',iconUrl:'icon-128.png',title:'Extenda reminder',message:reminder.message});
+    } catch { /* Delivery resumes on the next connected poll. */ }
+});

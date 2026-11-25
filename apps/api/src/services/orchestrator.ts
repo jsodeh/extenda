@@ -161,6 +161,8 @@ User Email: ${user.email}` : '';
         const prompt = `
       ${persona}
       Current Time: ${new Date().toISOString()}${userContext}
+      Today is ${new Date().toISOString()}. The user's timezone is ${(user as any).settings?.timezone || 'UTC'}.
+      When planning days or weeks, check Calendar free_busy before creating time blocks. Ask about unresolved conflicts. Use PlanningAdapter_schedule for future reminders and deferred work. Use a separate approved action for each destination and time.
       User Request: "${intent}"${historyContext}${formContext}${knowledgeContext}${customContext}
       
       Available Tools (Use these exact names):
@@ -456,6 +458,7 @@ User Email: ${user.email}` : '';
                         if (!original?.original) throw new Error('Choose an original document manually');
                         Object.assign(step.params,{filename:original.name,fileType:original.file_type,checksum:original.checksum});
                     }
+                    let approval: string | undefined;
                     if (workflow.definition.requiresApproval || step.requiresApproval || needsApproval(step.tool || '', step.params)) {
                         const digest = approvalDigest(execution.userId, execution.id, step);
                         if (digest !== approvedStepId) {
@@ -470,9 +473,10 @@ User Email: ${user.email}` : '';
                             });
                             return;
                         }
+                        approval = digest;
                         approvedStepId = undefined;
                     }
-                    stepResults.set(step.id, await this.executeStep(execution, step, stepResults));
+                    stepResults.set(step.id, await this.executeStep(execution, step, stepResults, approval));
                 };
                 const gated = (s: WorkflowStep) => workflow.definition.requiresApproval || s.requiresApproval || s.condition || needsApproval(s.tool || '', s.params);
                 const reads = await Promise.allSettled(batch.steps.filter(s => !gated(s)).map(run));
@@ -641,7 +645,7 @@ Generate a brief, friendly, conversational response summarizing the result for t
     private async executeStep(
         execution: Execution,
         step: WorkflowStep,
-        stepResults: Map<string, any>
+        stepResults: Map<string, any>, approval?: string
     ): Promise<any> {
         // Notify step start
         this.io?.to(`user:${execution.userId}`).emit(EVENTS_SERVER.WORKFLOW_STEP_START, { workflowId: execution.workflowId, step });
@@ -693,7 +697,7 @@ Generate a brief, friendly, conversational response summarizing the result for t
 
                     if (adapter && step.tool) {
                         const actionName = step.tool.replace(adapter.name + '_', '');
-                        result = await adapter.execute(actionName, step.params, execution.context);
+                        result = await adapter.execute(actionName, step.params, { ...execution.context,userId:execution.userId, approval,idempotencyKey:execution.id+'/'+step.id });
                     } else {
                         // Add fallback for direct tool name (e.g. "GmailScraper")
                         const toolDef = toolRegistry.get(toolName);

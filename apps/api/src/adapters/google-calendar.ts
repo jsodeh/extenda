@@ -1,8 +1,17 @@
+import { createHash } from 'node:crypto';
+import { validTimezone,timeRange } from '../lib/scheduling.js';
 import { google } from 'googleapis';
 import { BaseAdapter } from './base-adapter.js';
 import { AdapterAction } from '@extenda/shared';
 
+const scheduleFields = {
+    timezone:{type:'string',description:'IANA timezone'},calendarId:{type:'string',description:'Defaults to primary'},
+    recurrence:{type:'array',items:{type:'string'},description:'Google Calendar RRULE lines'},
+    reminderMinutes:{type:'number',description:'Popup minutes before event'}
+};
 const ACTIONS: AdapterAction[] = [
+    {id:'free_busy',name:'free_busy',description:'Check calendar availability in a time range',
+        parameters:{type:'object',required:['start','end'],properties:{...scheduleFields,start:{type:'string'},end:{type:'string'}}}},
     {
         id: 'create_event',
         name: 'create_event',
@@ -11,6 +20,7 @@ const ACTIONS: AdapterAction[] = [
             type: 'object',
             required: ['summary', 'start', 'end'],
             properties: {
+                ...scheduleFields,
                 summary: { type: 'string', description: 'Event title' },
                 description: { type: 'string', description: 'Event description' },
                 start: { type: 'string', description: 'Start time (ISO 8601)' },
@@ -53,6 +63,7 @@ const ACTIONS: AdapterAction[] = [
             required: ['eventId'],
             properties: {
                 eventId: { type: 'string', description: 'ID of the event to update' },
+                ...scheduleFields,
                 summary: { type: 'string', description: 'New title' },
                 description: { type: 'string', description: 'New description' },
                 start: { type: 'string', description: 'New start time (ISO 8601)' },
@@ -106,17 +117,31 @@ export class GoogleCalendarAdapter extends BaseAdapter {
 
         const calendar = google.calendar({ version: 'v3', auth });
 
+        const calendarId=params.calendarId || 'primary';
+        const timeZone=validTimezone(params.timezone || 'UTC');
+        const busy = async () => {
+            const range=timeRange(params.start,params.end);
+            const response=await calendar.freebusy.query({requestBody:{...range,timeZone,items:[{id:calendarId}]}});
+            const result=response.data.calendars?.[calendarId];
+            if (!result || result.errors?.length) throw new Error('Availability could not be verified');
+            return result.busy || [];
+        };
+        const reminders=params.reminderMinutes === undefined ? undefined : {useDefault:false,overrides:[{method:'popup',minutes:params.reminderMinutes}]};
         switch (actionName) {
+            case 'free_busy': return {calendarId,timeZone,busy:await busy()};
             case 'create_event':
+                if ((await busy()).length) throw new Error('Calendar conflict. Choose another time.');
                 const event = {
+                    id:context.idempotencyKey ? createHash('sha256').update(context.idempotencyKey).digest('hex') : undefined,
+                    recurrence:params.recurrence, reminders,
                     summary: params.summary,
                     description: params.description,
-                    start: { dateTime: params.start },
-                    end: { dateTime: params.end },
+                    start: { dateTime: params.start, timeZone },
+                    end: { dateTime: params.end, timeZone },
                     attendees: params.attendees?.map((email: string) => ({ email }))
                 };
                 const result = await calendar.events.insert({
-                    calendarId: 'primary',
+                    calendarId,
                     requestBody: event,
                     sendUpdates: 'all' // Send invite emails to attendees
                 });
@@ -131,7 +156,7 @@ export class GoogleCalendarAdapter extends BaseAdapter {
 
             case 'list_events':
                 const res = await calendar.events.list({
-                    calendarId: 'primary',
+                    calendarId,
                     timeMin: params.timeMin || new Date().toISOString(),
                     maxResults: params.maxResults || 10,
                     singleEvents: true,
@@ -147,21 +172,29 @@ export class GoogleCalendarAdapter extends BaseAdapter {
                 return { success: true, message: `Event ${params.eventId} deleted` };
 
             case 'update_event':
+                if (params.start || params.end) {
+                    const current=await calendar.events.get({calendarId,eventId:params.eventId});
+                    const range=timeRange(params.start || current.data.start?.dateTime,params.end || current.data.end?.dateTime);
+                    const overlaps=await calendar.events.list({calendarId,...range,singleEvents:true});
+                    if (overlaps.data.nextPageToken || overlaps.data.items?.some(e=>e.id!==params.eventId && e.transparency!=='transparent' && e.status!=='cancelled')) throw new Error('Calendar conflict');
+                }
                 const updateRes = await calendar.events.patch({
-                    calendarId: 'primary',
+                    calendarId,
                     eventId: params.eventId,
+                    sendUpdates:'all',
                     requestBody: {
+                        recurrence:params.recurrence,reminders,attendees:params.attendees?.map((email:string)=>({email})),
                         summary: params.summary,
                         description: params.description,
-                        start: params.start ? { dateTime: params.start } : undefined,
-                        end: params.end ? { dateTime: params.end } : undefined
+                        start: params.start ? { dateTime: params.start, timeZone } : undefined,
+                        end: params.end ? { dateTime: params.end, timeZone } : undefined
                     }
                 });
                 return updateRes.data;
 
             case 'get_event':
                 const getRes = await calendar.events.get({
-                    calendarId: 'primary',
+                    calendarId,
                     eventId: params.eventId || params.id
                 });
                 return getRes.data;
