@@ -23,12 +23,12 @@ export class WorkflowDependencyResolver {
 
         // Initialize
         steps.forEach((step, index) => {
-            let deps = step.dependencies || [];
+            let deps = [...new Set([...(step.dependencies || []), ...this.extractDependencies(step.params)])];
 
             // Fallback: If no dependencies are defined anywhere, assume sequential order
             // This prevents "race conditions" where AI forgets to define dependencies
             if (!hasExplicitDependencies && index > 0) {
-                deps = [steps[index - 1].id];
+                deps = [...new Set([...deps,steps[index - 1].id])];
                 console.log(`[Validation] Inferring sequential dependency: ${step.id} -> ${steps[index - 1].id}`);
             }
 
@@ -138,90 +138,21 @@ export class WorkflowDependencyResolver {
         params: any,
         stepResults: Map<string, any>
     ): any {
-        if (!params) return params;
-
-        const paramsStr = JSON.stringify(params);
-        let result = paramsStr;
-
-        // MATCH BOTH PATTERNS: 
-        // 1. ${stepId.path} -> Standard JS-like template
-        // 2. {{stepId.path}} -> Mustache/Handlebars style (commonly used by LLMs)
-        const regex = /(\$|\{)\{([^}]+)\}\}?/g;
-
-        // We will process matches and replace them
-        // Note: matchAll returns an iterator.
-
-        // We need to capture the variable path.
-        // For ${foo}, Match 1 is '$', Match 2 is 'foo'
-        // For {{foo}}, Match 1 is '{', Match 2 is 'foo' (roughly, need to be careful with regex)
-
-        // Let's use a simpler approach: multiple replacers or a unified regex.
-        // Unified regex: /(\${([^{}]+)})|(\{\{([^{}]+)\}\})/g
-        const unifiedRegex = /(\${([^{}]+)})|(\{\{([^{}]+)\}\})/g;
-
-        const matches = Array.from(result.matchAll(unifiedRegex));
-
-        // Iterate matches and replace
-        // Since replacing changes string length, we should replace strings uniquely or do simpler replace call.
-        // But JSON.stringify replacement is tricky if we replace with Objects.
-
-        // Better approach:
-        // If the WHOLE string is a variable, e.g. "{{step1.result}}", we should return the OBJECT directly if possible
-        // but parameters are usually a complex object.
-
-        // Let's iterate over unique matches found to avoid re-scanning modified string issues?
-        // Or just let string replacement replace all occurrences.
-
-        // Get unique placeholders first
-        const placeholders = new Set<string>();
-        for (const m of matches) {
-            placeholders.add(m[0]); // The full match string, e.g. {{step1.output}}
-        }
-
-        for (const placeholder of placeholders) {
-            // Extract path. 
-            // If starts with $, path is inside ${...} -> slice(2, -1)
-            // If starts with {, path is inside {{...}} -> slice(2, -2)
-            let path = '';
-            if (placeholder.startsWith('$')) {
-                path = placeholder.slice(2, -1);
-            } else {
-                path = placeholder.slice(2, -2);
-            }
-
-            // ROBUSTNESS: Strip any pipes/filters the AI might have hallucinated (e.g. {{step.output | map...}})
-            if (path.includes('|')) {
-                console.log(`[DependencyResolver] Stripping pipe from path: ${path}`);
-                path = path.split('|')[0].trim();
-            } else {
-                path = path.trim(); // Ensure no leading/trailing spaces
-            }
-
-            const value = this.getValueFromPath(path, stepResults);
-
-            if (value !== undefined) {
-                console.log(`[DependencyResolver] Injecting ${path} with type ${typeof value}`);
-
-                // CRITICAL: Handle the replacement carefully to preserve JSON validity.
-                const quotedPlaceholder = `"${placeholder}"`;
-
-                if (result.includes(quotedPlaceholder)) {
-                    result = result.replace(quotedPlaceholder, JSON.stringify(value));
-                } else {
-                    const strValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
-                    const safeStrValue = JSON.stringify(strValue).slice(1, -1);
-                    result = result.replace(placeholder, safeStrValue);
-                }
-            } else {
-                console.warn(`[DependencyResolver] Context variable not found: ${path} (Placeholder: ${placeholder})`);
-            }
-        }
-
-        try {
-            return JSON.parse(result);
-        } catch (e) {
-            return params;
-        }
+        if (Array.isArray(params)) return params.map(value=>this.injectResults(value,stepResults));
+        if (params && typeof params==='object') return Object.fromEntries(Object.entries(params).map(([key,value])=>[key,this.injectResults(value,stepResults)]));
+        if (typeof params!=='string') return params;
+        const reference = /\$\{([^{}]+)\}|\{\{([^{}]+)\}\}/g;
+        const resolve = (path:string) => {
+            const value=this.getValueFromPath(path.split('|')[0].trim(),stepResults);
+            if (value===undefined) throw new Error('Workflow dependency unavailable: '+path);
+            return value;
+        };
+        const matches=[...params.matchAll(reference)];
+        if (matches.length===1 && matches[0][0]===params) return resolve(matches[0][1] || matches[0][2]);
+        return params.replace(reference,(_,a,b)=>{
+            const value=resolve(a || b);
+            return typeof value==='object' ? JSON.stringify(value) : String(value);
+        });
     }
 
     /**
@@ -244,7 +175,7 @@ export class WorkflowDependencyResolver {
 
         const stepResult = stepResults.get(stepId);
 
-        if (!stepResult) {
+        if (stepResult === undefined) {
             // Fuzzy search? Check if we have a stepId that ends with this name?
             // console.warn(`[DependencyResolver] Step ID ${stepId} not found in results: ${Array.from(stepResults.keys())}`);
             return undefined;

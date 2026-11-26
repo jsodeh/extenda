@@ -19,6 +19,6 @@ export class BrowserInteractionAdapter extends BaseAdapter {
 
     async execute(actionName: string, params: any, context: any): Promise<any> {
         // Implementation handled by specialized tools in registry
-        return { success: true, message: `Action ${actionName} routed to specialized tools.` };
+        throw new Error('This action requires a connected browser');
     }
 }

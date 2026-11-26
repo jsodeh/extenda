@@ -1,4 +1,5 @@
-import { privateRequest } from '../lib/api';
+import { profileFields, type PersonalProfile } from '@extenda/shared';
+import { privateRequest,uploadDocument } from '../lib/api';
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Upload, FileText, Trash2, CheckCircle, AlertCircle } from 'lucide-react';
 
@@ -8,7 +9,7 @@ interface Document {
     size: number;
     uploadedAt: string;
     hasOriginal: boolean;
-    metadata?: { facts?: string; tags?: string; error?: string; semantic?: boolean };
+    metadata?: { profile?:PersonalProfile; facts?: string; tags?: string; error?: string; semantic?: boolean };
     status: 'processing' | 'ready' | 'failed';
 }
 
@@ -26,10 +27,11 @@ export default function KnowledgebasePage({ onBack }: KnowledgebasePageProps) {
     const [query,setQuery] = useState('');
     const [matches,setMatches] = useState<string[]>([]);
     const [progress,setProgress] = useState('');
+    const [ocr,setOcr]=useState(false);
     const [semantic,setSemantic] = useState(false);
     const [preview,setPreview] = useState('');
     const [editing,setEditing] = useState<Document | null>(null);
-    const [facts,setFacts] = useState('');
+    const [profile,setProfile]=useState<PersonalProfile>({});
     const [tags,setTags] = useState('');
     const refresh = async () => setDocuments(await (await privateRequest(base)).json());
     const act = async (operation: () => Promise<void>) => {
@@ -46,9 +48,10 @@ export default function KnowledgebasePage({ onBack }: KnowledgebasePageProps) {
             setProgress(`Processing ${index+1} of ${selected.length}: ${file.name}`);
             const data = new FormData();
             data.append('file',file);
+            data.append('ocr',String(ocr));
             data.append('semantic',String(semantic));
             if (replace) data.append('replace',replace);
-            try { await privateRequest(base+'/upload',{ method:'POST',body:data }); }
+            try { await uploadDocument(data,percent=>setProgress(percent===100 ? 'Indexing '+file.name : `File ${index+1}/${selected.length} · ${percent}%`)); }
             catch (e) { errors.push(`${file.name}: ${(e as Error).message}`); }
         }
         await act(refresh);
@@ -57,7 +60,7 @@ export default function KnowledgebasePage({ onBack }: KnowledgebasePageProps) {
     const inspect = (doc: Document) => act(async () => {
         const sections = await (await privateRequest(`${base}/${doc.id}/preview`)).json();
         setPreview(sections.map((s:any) => s.content).join('\n\n'));
-        setFacts(doc.metadata?.facts || ''); setTags(doc.metadata?.tags || ''); setEditing(doc);
+        setProfile(doc.metadata?.profile || (doc.metadata?.facts ? {'Professional summary':doc.metadata.facts} : {})); setTags(doc.metadata?.tags || ''); setEditing(doc);
     });
     const download = (doc: Document) => act(async () => {
         const url = URL.createObjectURL(await (await privateRequest(`${base}/${doc.id}/download`)).blob());
@@ -143,7 +146,7 @@ export default function KnowledgebasePage({ onBack }: KnowledgebasePageProps) {
                             type="file"
                             id="file-upload"
                             className="hidden"
-                            multiple accept=".pdf,.txt,.md,.markdown,.docx,.csv,.json"
+                            multiple accept=".pdf,.txt,.md,.markdown,.docx,.csv,.json,.jpg,.jpeg,.png"
                             onChange={(e) => handleFileUpload(e.target.files)}
                             disabled={uploading}
                         />
@@ -162,6 +165,7 @@ export default function KnowledgebasePage({ onBack }: KnowledgebasePageProps) {
                     </div>
 
                     <label className="block text-xs"><input type="checkbox" checked={semantic} onChange={e=>setSemantic(e.target.checked)} /> Send chunks to OpenAI for semantic indexing</label>
+                    <label className="block text-xs"><input type="checkbox" checked={ocr} onChange={e=>setOcr(e.target.checked)} /> Send images and scanned PDFs to Gemini for OCR</label>
                     {error && <p role="alert" className="text-destructive text-sm">{error}</p>}
                     <form className="flex gap-2" onSubmit={e=>{ e.preventDefault(); void act(async()=>setMatches(await (await privateRequest(base+'/search?q='+encodeURIComponent(query))).json())); }}>
                         <input className="flex-1 bg-card border rounded p-2" placeholder="Search document contents" aria-label="Search documents" value={query} onChange={e=>setQuery(e.target.value)} />
@@ -171,7 +175,9 @@ export default function KnowledgebasePage({ onBack }: KnowledgebasePageProps) {
                     {editing && <section className="bg-card rounded-xl border p-4 space-y-2">
                         <button className="float-right" onClick={()=>setEditing(null)}>Close</button><strong>{editing.name}</strong>
                         <pre className="whitespace-pre-wrap max-h-48 overflow-auto text-xs">{preview}</pre>
-                        <label className="block">Confirmed profile facts<textarea className="w-full border bg-background p-2" value={facts} onChange={e=>setFacts(e.target.value)} /></label>
+                        <details open><summary>Confirmed profile facts</summary><div className="max-h-56 overflow-auto">
+                            {profileFields.map(k=><label key={k} className="block text-xs">{k}<textarea className="w-full border bg-background p-1" rows={2} value={profile[k] || ''} onChange={e=>setProfile({...profile,[k]:e.target.value})}/></label>)}
+                        </div></details>
                         <label>Tags <input className="border bg-background" value={tags} onChange={e=>setTags(e.target.value)} /></label>
                         <button className="block text-primary" onClick={()=>act(async()=>{
                             const prefs=await chrome.storage.local.get(['extenda_active_provider','extenda_provider_keys','extenda_default_models','extenda_ollama_url']);
@@ -179,10 +185,10 @@ export default function KnowledgebasePage({ onBack }: KnowledgebasePageProps) {
                             if (!confirm('Send excerpts from this document to your selected AI provider for profile suggestions?')) return;
                             const res=await privateRequest(`${base}/${editing.id}/suggest`,{method:'POST',headers:{'Content-Type':'application/json'},
                                 body:JSON.stringify({modelConfig:{provider,model:prefs.extenda_default_models?.[provider],apiKey:prefs.extenda_provider_keys?.[provider],baseURL:prefs.extenda_ollama_url}})});
-                            setFacts((await res.json()).facts);
+                            setProfile((await res.json()).profile);
                         })}>Suggest facts for review</button>
                         <button className="text-primary" onClick={()=>act(async()=>{
-                            await privateRequest(`${base}/${editing.id}/profile`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({facts,tags})});
+                            await privateRequest(`${base}/${editing.id}/profile`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile,tags})});
                             setEditing(null); await refresh();
                         })}>Save confirmed facts and tags</button>
                     </section>}

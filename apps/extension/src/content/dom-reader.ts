@@ -125,7 +125,7 @@ export class DOMReader {
 
             switch (params.action) {
                 case 'inspect_form':
-                    data = Array.from(document.querySelectorAll<HTMLElement>('form,input:not([type=hidden]),select,textarea,button,[contenteditable=true],[role=alert]')).slice(0,150).map(el => {
+                    data = Array.from(document.querySelectorAll<HTMLElement>('form,input:not([type=hidden]),select,textarea,button,[contenteditable=true],[role=alert]')).filter(el=>!el.closest('[hidden],[aria-hidden=true]') && getComputedStyle(el).display!=='none').slice(0,150).map(el => {
                         const control = el as HTMLInputElement;
                         const labelIds = (el.getAttribute('aria-labelledby') || '').split(/\s+/);
                         return {

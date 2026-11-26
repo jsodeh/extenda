@@ -9,7 +9,7 @@ class WebSocketClient {
         const targetUrl = apiUrl || import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
         // If already connected with the same token and url, don't reconnect
-        if (this.socket && this.socket.connected && this.currentToken === token && (this.socket as any).io.uri === targetUrl) {
+        if (this.socket && this.socket.active && this.currentToken === token && (this.socket as any).io.uri === targetUrl) {
             return;
         }
 
@@ -23,7 +23,7 @@ class WebSocketClient {
         this.socket = io(targetUrl, {
             transports: ['websocket'],
             reconnection: true,
-            reconnectionAttempts: 5,
+            reconnectionAttempts: Infinity,
             reconnectionDelay: 1000,
             timeout: 60000,
             auth: {

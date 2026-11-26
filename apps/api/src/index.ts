@@ -1,13 +1,6 @@
+import './env.js';
+import { WorkflowPersistence } from './services/workflow-persistence.js';
 import { needsApproval } from './lib/approval.js';
-import './env.js'; // Ensure env vars are loaded before other imports
-import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
-
-// Still getting __dirname for app level use, but dotenv is already handled
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const envPath = resolve(__dirname, '../.env');
-
 // Imports
 import { randomUUID } from 'node:crypto';
 import { serve } from '@hono/node-server';
@@ -15,7 +8,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { Server } from 'socket.io';
 import { EVENTS_CLIENT, EVENTS_SERVER, WorkflowStartPayload, WorkflowApprovePayload, WorkflowResumePayload, Execution } from '@extenda/shared';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { runMigrations } from './db/migrate.js';
 
 import app from './server.js';
@@ -25,26 +18,10 @@ import { generateText } from './lib/models.js';
 import { verify } from 'hono/jwt';
 import { authMiddleware, AuthEnv } from './lib/auth.js';
 import { authOAuth } from './routes/auth-oauth.js';
-import { db } from './db/index.js';
+import { db,pool } from './db/index.js';
 import { users, executions, workflows } from './db/schema.js';
 import { oauthManager } from './services/oauth-manager.js';
 import { chatService } from './services/chat-service.js';
-
-// Debug: Verify env vars are loaded
-console.log('App starting...');
-console.log('Loading .env from:', envPath);
-console.log('Environment:', process.env.NODE_ENV);
-console.log('PORT:', process.env.PORT);
-
-// Security-Safe Diagnostic Probe
-const envKeys = Object.keys(process.env).filter(k => k.includes('GOOGLE') || k.includes('CLIENT'));
-console.log('[System] Startup Diagnostic Env Probe - Found Keys:', envKeys.join(', '));
-if (process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_AUTH_CLIENT_ID) {
-    console.log('[System] Credentials Status: GOOGLE_CLIENT_ID present? ' + (!!process.env.GOOGLE_CLIENT_ID) + 
-                ', GOOGLE_AUTH_CLIENT_ID present? ' + (!!process.env.GOOGLE_AUTH_CLIENT_ID));
-} else {
-    console.warn('[System] CRITICAL: No Google Client IDs found in process.env at startup.');
-}
 
 const port = Number(process.env.PORT) || 3000;
 
@@ -55,6 +32,7 @@ console.log(`Initializing server on port ${port}...`);
 
 // Initialize Socket.IO
 await runMigrations();
+await WorkflowPersistence.recoverInterrupted();
 const server = serve({
     fetch: app.fetch,
     port,
@@ -134,16 +112,27 @@ io.on('connection', (socket) => {
     console.log(`Socket ${socket.id} joined room user:${user.id}`);
 
     if (socket.handshake.auth.role !== 'browser') {
-        void db.select().from(executions).where(and(eq(executions.userId,user.id),eq(executions.status,'paused')))
-            .orderBy(desc(executions.startedAt)).limit(1).then(async ([run]) => {
-                const ctx=run?.context as any;
-                if (!ctx?.review || !run.workflowId) return;
-                const workflow=await db.query.workflows.findFirst({where:and(eq(workflows.id,run.workflowId),eq(workflows.userId,user.id))});
-                if (!workflow) return;
-                const definition=workflow.definition as any;
-                socket.emit(EVENTS_SERVER.WORKFLOW_PLAN,{workflowId:workflow.id,executionId:run.id,status:'paused',approval:ctx.approval,pendingStepId:ctx.review.id,
-                    plan:{...workflow,definition:{...definition,steps:definition.steps.map((s:any)=>s.id===ctx.review.id ? ctx.review : s)}}});
-            }).catch(()=>console.error('Failed to restore pending review'));
+        const restoreReview=async(sessionId?:string)=>{
+            if (sessionId) {
+                if ((await chatService.getSession(sessionId))?.userId!==user.id) return;
+                await socket.join(sessionId);
+            }
+            const [run]=await db.select().from(executions).where(and(eq(executions.userId,user.id),
+                eq(executions.status,'paused'),sessionId ? sql`${executions.context}->>'sessionId'=${sessionId}` : undefined))
+                .orderBy(desc(executions.startedAt)).limit(1);
+            const ctx=run?.context as any;
+            if (!ctx?.review || !run.workflowId) return;
+            const workflow=await db.query.workflows.findFirst({where:and(eq(workflows.id,run.workflowId),eq(workflows.userId,user.id))});
+            if (!workflow) return;
+            if (ctx.sessionId && (await chatService.getSession(ctx.sessionId))?.userId===user.id) await socket.join(ctx.sessionId);
+            const definition=workflow.definition as any;
+            socket.emit(EVENTS_SERVER.WORKFLOW_PLAN,{workflowId:workflow.id,executionId:run.id,status:'paused',approval:ctx.approval,pendingStepId:ctx.review.id,
+                plan:{...workflow,definition:{...definition,steps:definition.steps.map((s:any)=>s.id===ctx.review.id ? ctx.review : s)}}});
+        };
+        void restoreReview().catch(()=>console.error('Failed to restore pending review'));
+        socket.on('session:open',(id:unknown)=>{
+            if (typeof id==='string') void restoreReview(id).catch(()=>console.error('Failed to open chat session'));
+        });
     }
     // Forward tool execution results from background worker to orchestrator
     // CRITICAL: This was missing before — tool:result events from clients were silently dropped
@@ -155,13 +144,18 @@ io.on('connection', (socket) => {
 
     socket.on(EVENTS_CLIENT.WORKFLOW_START, async (data: WorkflowStartPayload) => {
 
-        // Safety timeout for entire request (increased to 5 minutes)
+        let expired = false;
         const timeoutHandle = setTimeout(() => {
-            console.error('[TIMEOUT] Request exceeded 5m limit');
-            socket.emit(EVENTS_SERVER.WORKFLOW_ERROR, { error: 'Request timeout - please try again' });
+            expired = true;
+            socket.emit(EVENTS_SERVER.WORKFLOW_ERROR, { error: 'Request timed out. Check workflow history before trying again.' });
         }, 300000);
 
         try {
+            if (!data || typeof data.intent!=='string' || !data.intent.trim() || data.intent.length>200000) throw new Error('Invalid request');
+            if (data.requestId) {
+                const receipt=await pool.query('INSERT INTO workflow_requests(user_id,request_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[user.id,data.requestId]);
+                if (!receipt.rowCount) { clearTimeout(timeoutHandle); return; }
+            }
             // 1. Session & History Initialization (Required for accurate context matching)
             let sessionId = data.sessionId;
             if (!sessionId) {
@@ -187,9 +181,10 @@ io.on('connection', (socket) => {
             // OPTIMIZATION 1: Quick Match First (with full context)
             console.log('[DEBUG] 0. Running quick intent match...');
             const quickClassification = await intentClassifier.classify(data.intent, conversationHistory, data.modelConfig);
+            if (expired) return;
             console.log('[DEBUG] 0.1. Quick classification:', quickClassification.type);
 
-            if (quickClassification.type === 'conversational' && quickClassification.confidence === 1.0) {
+            if (quickClassification.type === 'conversational' && quickClassification.confidence === 1.0 && /^(?:hi(?: there)?|hello|hey|greetings|thanks|thank you|ok|okay|great|cool)[!.?]*$/i.test(data.intent.trim()) && !data.context?.attachments?.length) {
                 // FAST PATH: Instant greeting response
                 console.log('[DEBUG] Quick greeting detected, skipping heavy checks');
 
@@ -278,7 +273,7 @@ RULES:
 
             // OPTIMIZATION 2: Lazy OAuth - only for workflow intents
             console.log('[DEBUG] Checking tokens for workflow...');
-            const validUser = await oauthManager.ensureValidToken(user);
+            const validUser = user;
             console.log('[DEBUG] Tokens valid');
 
             // Context for tools (tokens)
@@ -295,8 +290,9 @@ RULES:
             socket.emit('agent:status', { state: 'planning', message: 'Designing workflow...' });
 
             const workflowIntent = quickClassification.workflowIntent || data.intent;
-            const workflow = await orchestrator.plan(workflowIntent, user, sessionId, data.modelConfig, data.context?.form);
+            const workflow = await orchestrator.plan(workflowIntent, user, sessionId, data.modelConfig, data.context?.form, Array.isArray(data.context?.attachments) ? data.context.attachments.filter((a:unknown)=>typeof a==='string').slice(0,10) : undefined);
 
+            if (expired) return;
             // TIER 3.5: Direct Response Check
             // If the AI determined it can answer directly without any steps, we skip the workflow
             if (workflow.definition.directResponse && (!workflow.definition.steps || workflow.definition.steps.length === 0)) {
@@ -351,6 +347,7 @@ RULES:
             (execution as any)._workflow = workflow;
 
             // Execute with approval required based on AI planning
+            if (expired) return;
             orchestrator.execute(execution, workflow, workflow.definition.requiresApproval, data.modelConfig).catch(err => {
                 console.error('Execution error:', err);
                 socket.emit('agent:status', { state: 'error', message: 'Execution failed' });
@@ -359,18 +356,22 @@ RULES:
             clearTimeout(timeoutHandle);
         } catch (error) {
             clearTimeout(timeoutHandle);
-            console.error('Workflow start failed:', error);
+            console.error('Workflow start failed',socket.id);
             socket.emit(EVENTS_SERVER.WORKFLOW_ERROR, { error: `Failed to start: ${(error as Error).message}` });
         }
     });
 
+    socket.on(EVENTS_CLIENT.WORKFLOW_CANCEL,async ({executionId})=>{
+        try {await orchestrator.cancel(executionId,user.id);}
+        catch {socket.emit(EVENTS_SERVER.WORKFLOW_ERROR,{error:'No cancellable workflow'});}
+    });
     socket.on(EVENTS_CLIENT.WORKFLOW_RESUME, async (data: WorkflowResumePayload) => {
         try {
             await orchestrator.resume(data.executionId, user.id, data.approved, data.approval, data.modelConfig, {
                 access_token: user.googleAccessToken, refresh_token: user.googleRefreshToken
             }, data.revised);
         } catch (error) {
-            console.error('Workflow resume failed:', error);
+            console.error('Workflow resume failed',socket.id);
             socket.emit(EVENTS_SERVER.WORKFLOW_ERROR, { error: `Failed to resume: ${(error as Error).message}` });
         }
     });

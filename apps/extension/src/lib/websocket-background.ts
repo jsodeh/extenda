@@ -8,24 +8,26 @@ import { getApiUrl } from './api';
 class BackgroundWebSocketClient {
     private socket: Socket | null = null;
     private currentToken?: string;
+    private apiUrl?:string;
     private listeners: Map<string, ((...args: any[]) => void)[]> = new Map();
 
     async connect(token: string) {
+        const apiUrl=await getApiUrl();
         // If already connected with same token, skip
-        if (this.socket?.active && this.currentToken === token) {
+        if (this.socket?.active && this.currentToken === token && this.apiUrl === apiUrl) {
             console.log('[BgWS] Already connected');
             return;
         }
 
         // Disconnect existing if token changed
-        if (this.socket && this.currentToken !== token) {
+        if (this.socket && (this.currentToken !== token || this.apiUrl!==apiUrl)) {
             this.socket.disconnect();
         }
 
         this.currentToken = token;
         
         // Use the centralized environment service to get the correct API URL
-        const apiUrl = await getApiUrl();
+        this.apiUrl=apiUrl;
 
         console.log(`[BgWS] Connecting to API (websocket-only): ${apiUrl}...`);
         this.socket = io(apiUrl, {
@@ -33,7 +35,7 @@ class BackgroundWebSocketClient {
             transports: ['websocket'],
             upgrade: false,
             reconnection: true,
-            reconnectionAttempts: 10,
+            reconnectionAttempts: Infinity,
             reconnectionDelay: 1000,
             timeout: 60000,
             auth: { token, role: 'browser' }

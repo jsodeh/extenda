@@ -1,3 +1,4 @@
+import { oauthManager } from '../services/oauth-manager.js';
 import { getCookie,setCookie,deleteCookie } from 'hono/cookie';
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
@@ -26,7 +27,7 @@ function getOAuthProviders(): Record<string, OAuthConfig> {
             tokenUrl: 'https://oauth2.googleapis.com/token',
             userInfoUrl: 'https://www.googleapis.com/oauth2/v2/userinfo',
             clientId: process.env.GOOGLE_CLIENT_ID || '',
-            clientSecret: process.env.GOOGLE_AUTH_CLIENT_SECRET || '',
+            clientSecret: process.env.GOOGLE_AUTH_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || '',
             scopes: [
                 'openid',
                 'email',
@@ -79,32 +80,11 @@ function getOAuthProviders(): Record<string, OAuthConfig> {
     };
 }
 
-// Debug: Log OAuth configuration at startup (after first call)
-let debugLogged = false;
-function logDebugOnce() {
-    if (!debugLogged) {
-        const providers = getOAuthProviders();
-        console.log('--- OAuth Auth Configuration Validation ---');
-        console.log('Google Auth Client ID:', providers.google.clientId ? '✅ Present' : '❌ MISSING');
-        console.log('Google Auth Client Secret:', providers.google.clientSecret ? '✅ Present' : '❌ MISSING');
-        console.log('Google Auth Redirect URI:', providers.google.redirectUri);
-        
-        if (!providers.google.clientId) {
-            console.error('CRITICAL: GOOGLE_CLIENT_ID is not defined. Google Authentication will fail.');
-        }
-        
-        console.log('-------------------------------------------');
-        debugLogged = true;
-    }
-}
-
-
 /**
  * GET /oauth/auth/:provider
  * Initiate OAuth flow for user authentication
  */
 authOAuth.get('/:provider', (c) => {
-    logDebugOnce();
     const OAUTH_AUTH_PROVIDERS = getOAuthProviders();
     const provider = c.req.param('provider') as keyof typeof OAUTH_AUTH_PROVIDERS;
     const config = OAUTH_AUTH_PROVIDERS[provider];
@@ -264,28 +244,16 @@ authOAuth.get('/callback/:provider', async (c) => {
                 name,
                 role: 'free',
                 settings: {},
-                googleAccessToken: provider === 'google' ? tokenData.access_token : null,
-                googleRefreshToken: provider === 'google' ? tokenData.refresh_token : null,
             }).returning();
             user = newUser;
-        } else {
-            // Update existing user with new tokens
-            if (provider === 'google') {
-                const updates: any = {
-                    googleAccessToken: tokenData.access_token
-                };
-                if (tokenData.refresh_token) {
-                    updates.googleRefreshToken = tokenData.refresh_token;
-                }
-
-                const [updatedUser] = await db.update(users)
-                    .set(updates)
-                    .where(eq(users.id, user.id))
-                    .returning();
-                user = updatedUser;
-            }
         }
-
+        if (provider === 'google') {
+            await oauthManager.storeCredentials({userId:user.id,provider,accessToken:tokenData.access_token,
+                refreshToken:tokenData.refresh_token || user.googleRefreshToken || undefined,
+                expiresAt:tokenData.expires_in ? new Date(Date.now()+tokenData.expires_in*1000) : undefined,
+                scope:tokenData.scope});
+            await db.update(users).set({googleAccessToken:null,googleRefreshToken:null}).where(eq(users.id,user.id));
+        }
         // Generate JWT tokens
         const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret) throw new Error('JWT_SECRET must be configured');
@@ -363,7 +331,7 @@ authOAuth.get('/callback/:provider', async (c) => {
             </html>
         `);
     } catch (error) {
-        console.error('OAuth authentication error:', error);
+        console.error('OAuth authentication failed',provider);
         return sendErrorResponse(c, provider, 'Internal server error during authentication');
     }
 });

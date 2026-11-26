@@ -94,7 +94,7 @@ export class HubSpotAdapter extends BaseAdapter {
     actions = ACTIONS;
 
     async execute(actionName: string, params: any, context: any): Promise<any> {
-        const accessToken = process.env.HUBSPOT_ACCESS_TOKEN;
+        const accessToken = context.tokens?.access_token || (context.userId && context.userId === process.env.INTEGRATION_CREDENTIAL_OWNER ? process.env.HUBSPOT_ACCESS_TOKEN : undefined);
         const client = new Client({ accessToken });
 
         switch (actionName) {

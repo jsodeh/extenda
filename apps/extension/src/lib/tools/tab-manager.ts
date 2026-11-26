@@ -9,6 +9,7 @@ export async function handleTabManager(params: any): Promise<any> {
             return await openTab(args.url);
         case 'close':  // Alias from intent classifier
         case 'close_tab':
+            if (!args.tabId || !args.targetUrl || (await chrome.tabs.get(args.tabId)).url!==args.targetUrl) throw new Error('Review the tab before closing it');
             return await closeTab(args.tabId);
         case 'switch':
         case 'switch_tab':

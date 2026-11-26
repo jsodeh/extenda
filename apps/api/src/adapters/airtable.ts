@@ -87,7 +87,7 @@ export class AirtableAdapter extends BaseAdapter {
     actions = ACTIONS;
 
     async execute(actionName: string, params: any, context: any): Promise<any> {
-        const apiKey = process.env.AIRTABLE_API_KEY;
+        const apiKey = context.tokens?.access_token || (context.userId && context.userId === process.env.INTEGRATION_CREDENTIAL_OWNER ? process.env.AIRTABLE_API_KEY : undefined);
         Airtable.configure({ apiKey: apiKey || '' });
         const base = Airtable.base(params.base_id);
 

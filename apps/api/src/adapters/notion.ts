@@ -93,7 +93,7 @@ export class NotionAdapter extends BaseAdapter {
     actions = ACTIONS;
 
     async execute(actionName: string, params: any, context: any): Promise<any> {
-        const token = process.env.NOTION_TOKEN;
+        const token = context.tokens?.access_token || (context.userId && context.userId === process.env.INTEGRATION_CREDENTIAL_OWNER ? process.env.NOTION_TOKEN : undefined);
         const notion = new Client({ auth: token });
 
         switch (actionName) {

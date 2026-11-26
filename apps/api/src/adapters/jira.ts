@@ -105,6 +105,7 @@ export class JiraAdapter extends BaseAdapter {
 
     async execute(actionName: string, params: any, context: any): Promise<any> {
         // TODO: Use OAuth token from context
+        if (!context.userId || context.userId !== process.env.INTEGRATION_CREDENTIAL_OWNER) throw new Error('Jira administrator credentials unavailable for this account');
         const client = new Version3Client({
             host: process.env.JIRA_HOST || 'https://your-domain.atlassian.net',
             authentication: {

@@ -97,7 +97,7 @@ export class GmailAdapter extends BaseAdapter {
     async execute(actionName: string, params: any, context: any): Promise<any> {
         // Unified Standard: Correlate with Render environment variables
         const clientId = process.env.GOOGLE_CLIENT_ID;
-        const clientSecret = process.env.GOOGLE_AUTH_CLIENT_SECRET;
+        const clientSecret = process.env.GOOGLE_AUTH_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET;
         const redirectUri = process.env.GOOGLE_AUTH_REDIRECT_URI;
 
         if (!clientId || !clientSecret) {

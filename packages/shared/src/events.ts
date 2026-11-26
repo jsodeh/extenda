@@ -28,6 +28,7 @@ export const EVENTS_SERVER = {
 
 // Types for Event Payloads
 export interface WorkflowStartPayload {
+    requestId?: string;
     intent: string;
     context: SessionContext;
     sessionId?: string;

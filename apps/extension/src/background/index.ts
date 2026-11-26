@@ -5,6 +5,8 @@ import { handleScreenshot } from '../lib/tools/screenshot';
 import { handleSmartClick } from '../lib/tools/smart-click';
 import { ToolExecutionRequest } from '@extenda/shared';
 
+void chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'});
+
 // Content script tool types
 const CONTENT_SCRIPT_TOOLS = ['DOMReader', 'FormFiller', 'GmailScraper'];
 const MESSAGE_TYPE_MAP: Record<string, string> = {
@@ -220,6 +222,9 @@ const initConnection = async () => {
 
     // 2. Listen for storage changes (Login/Logout from sidepanel)
     chrome.storage.onChanged.addListener((changes, areaName) => {
+        if (areaName==='local' && changes.extenda_backend_target && !changes.accessToken) {
+            chrome.storage.local.get('accessToken').then(({accessToken})=>{if(accessToken) syncSession(accessToken);});
+        }
         if (areaName === 'local' && changes.accessToken) {
             const newToken = changes.accessToken.newValue;
             if (newToken) {
@@ -249,7 +254,7 @@ initConnection();
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
     try {
         const tab = await chrome.tabs.get(activeInfo.tabId);
-        console.log('[Background] Active tab changed:', tab.url);
+        console.log('[Background] Active tab changed');
     } catch (e) {
         console.error('[Background] Error getting active tab:', e);
     }
@@ -299,6 +304,9 @@ chrome.alarms.onAlarm.addListener(async alarm=>{
     if (alarm.name !== 'personal-reminders') return;
     try {
         const reminders=await (await privateRequest('/api/schedule/reminders',{method:'POST'})).json();
-        for (const reminder of reminders) await chrome.notifications.create({type:'basic',iconUrl:'icon-128.png',title:'Extenda reminder',message:reminder.message});
+        for (const {id,occurrence,message} of reminders) {
+            await chrome.notifications.create(id+'/'+occurrence,{type:'basic',iconUrl:'icon-128.png',title:'Extenda reminder',message});
+            await privateRequest('/api/schedule/reminders/ack',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,occurrence})});
+        }
     } catch { /* Delivery resumes on the next connected poll. */ }
 });

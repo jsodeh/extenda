@@ -90,7 +90,7 @@ export class OAuthManager {
             ON CONFLICT (user_id, provider) 
             DO UPDATE SET
                 encrypted_access_token = EXCLUDED.encrypted_access_token,
-                encrypted_refresh_token = EXCLUDED.encrypted_refresh_token,
+                encrypted_refresh_token = COALESCE(EXCLUDED.encrypted_refresh_token, oauth_credentials.encrypted_refresh_token),
                 expires_at = EXCLUDED.expires_at,
                 scope = EXCLUDED.scope,
                 metadata = EXCLUDED.metadata,
@@ -158,15 +158,37 @@ export class OAuthManager {
         }
 
         // Provider-specific refresh logic
-        // This is a placeholder - actual implementation depends on provider
         switch (provider) {
             case 'google':
                 return await this.refreshGoogleToken(credentials);
+            case 'linkedin':
+                return this.refreshLinkedInToken(credentials);
             case 'slack':
                 return await this.refreshSlackToken(credentials);
             default:
                 throw new Error(`Token refresh not implemented for provider: ${provider}`);
         }
+    }
+
+    private async refreshLinkedInToken(credentials: OAuthCredentials): Promise<OAuthCredentials> {
+        const response = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
+            method: 'POST',
+            body: new URLSearchParams({
+                grant_type: 'refresh_token',
+                client_id: process.env.LINKEDIN_CLIENT_ID || '',
+                client_secret: process.env.LINKEDIN_CLIENT_SECRET || '',
+                refresh_token: credentials.refreshToken!
+            }),
+            signal: AbortSignal.timeout(10000)
+        });
+        if (!response.ok) throw new Error('Reconnect LinkedIn to renew publishing permission');
+        const data = await response.json();
+        if (!data.access_token || !(data.expires_in > 0)) throw new Error('LinkedIn returned an incomplete token');
+        const renewed = { ...credentials, accessToken: data.access_token,
+            refreshToken: data.refresh_token || credentials.refreshToken, scope: data.scope || credentials.scope,
+            expiresAt: new Date(Date.now() + data.expires_in * 1000) };
+        await this.storeCredentials(renewed);
+        return renewed;
     }
 
     private async refreshGoogleToken(credentials: OAuthCredentials): Promise<OAuthCredentials> {
@@ -179,7 +201,7 @@ export class OAuthManager {
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: new URLSearchParams({
                     client_id: process.env.GOOGLE_CLIENT_ID || '',
-                    client_secret: process.env.GOOGLE_AUTH_CLIENT_SECRET || '',
+                    client_secret: process.env.GOOGLE_AUTH_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || '',
                     refresh_token: credentials.refreshToken!,
                     grant_type: 'refresh_token'
                 }),
@@ -253,60 +275,11 @@ export class OAuthManager {
      * Ensure user has valid tokens, refreshing if necessary
      */
     async ensureValidToken(user: any): Promise<any> { // Typing as any for User to avoid circular deps
-        if (!user.googleAccessToken) return user;
+        let credentials=await this.getCredentials(user.id,'google');
+        if (!credentials) return user;
+        if (this.isTokenExpired(credentials.expiresAt) && credentials.refreshToken) credentials=await this.refreshGoogleToken(credentials);
+        return {...user,googleAccessToken:credentials.accessToken,googleRefreshToken:credentials.refreshToken};
 
-        // Check expiry (conservatively assuming 1 hour if not tracked)
-        // Ideally DB should track expiry. For now, we'll try to refresh if we have a refresh token
-        // and let the refresh logic handle validity.
-        // Optimization: Use separate table for detailed token info or expand User schema
-
-        if (user.googleRefreshToken) {
-            try {
-                // We reconstruct a partial credentials object
-                const credentials: OAuthCredentials = {
-                    userId: user.id,
-                    provider: 'google',
-                    accessToken: user.googleAccessToken,
-                    refreshToken: user.googleRefreshToken,
-                    // expiresAt: user.googleTokenExpiresAt // TODO: Add this to schema
-                };
-
-                // For now, ALWAYS try to refresh if we have a refresh token to be safe
-                // or just rely on the error handler?
-                // Better: Just return the user. The adapter layer can also handle 401s, 
-                // but we want proactive. 
-                // Let's rely on a check. Since we don't hold expiry in User table yet,
-                // we will attempt a refresh if the token effectively "looks" old or on every request?
-                // On every request is too slow.
-
-                // Let's check the oauth_credentials table which DOES have expiry
-                const storedCreds = await this.getCredentials(user.id, 'google');
-
-                if (storedCreds && this.isTokenExpired(storedCreds.expiresAt)) {
-                    console.log('Token expired for user', user.id, 'refreshing...');
-                    const newCreds = await this.refreshGoogleToken(storedCreds);
-
-                    // Update the user object in memory (and DB is updated by refreshGoogleToken)
-                    // We also need to sync the user table columns
-                    await query(`
-                        UPDATE users 
-                        SET google_access_token = $1, google_refresh_token = $2
-                        WHERE id = $3
-                    `, [newCreds.accessToken, newCreds.refreshToken, user.id]);
-
-                    return {
-                        ...user,
-                        googleAccessToken: newCreds.accessToken,
-                        googleRefreshToken: newCreds.refreshToken
-                    };
-                }
-            } catch (error) {
-                console.warn('Failed to refresh token proactively:', error);
-                // Return original user, let it fail downstream if invalid
-            }
-        }
-
-        return user;
     }
 }
 

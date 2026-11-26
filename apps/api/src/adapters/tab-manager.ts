@@ -18,6 +18,6 @@ export class TabManagementAdapter extends BaseAdapter {
     actions = ACTIONS;
 
     async execute(actionName: string, params: any, context: any): Promise<any> {
-        return { success: true, message: `Action ${actionName} routed to TabManager.` };
+        throw new Error('This action requires a connected browser');
     }
 }

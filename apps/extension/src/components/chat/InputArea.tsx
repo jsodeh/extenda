@@ -61,7 +61,7 @@ export function InputArea({ onSend, disabled, sessionId, accessToken, onTranscri
 
     // BYOK State
     const [activeProvider, setActiveProvider] = useState<Provider>('google');
-    const [activeModel, setActiveModel] = useState<string>('gemini-2.0-flash');
+    const [activeModel, setActiveModel] = useState<string>('gemini-flash-latest');
     const [mode, setMode] = useState<ExecutionMode>('Fast');
     const [providerKeys, setProviderKeys] = useState<{ google: string, openai: string, anthropic: string, ollama: string }>({ google: '', openai: '', anthropic: '', ollama: '' });
     const [defaultModels, setDefaultModels] = useState<Record<string, string>>({});
@@ -83,7 +83,7 @@ export function InputArea({ onSend, disabled, sessionId, accessToken, onTranscri
                 
                 if (result.extenda_default_models) {
                     setDefaultModels(result.extenda_default_models);
-                    setActiveModel(result.extenda_default_models[provider] || 'gemini-2.0-flash');
+                    setActiveModel(result.extenda_default_models[provider] || 'gemini-flash-latest');
                 }
                 
                 if (result.extenda_ollama_url) setOllamaUrl(result.extenda_ollama_url);

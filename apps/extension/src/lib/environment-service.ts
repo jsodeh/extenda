@@ -24,8 +24,9 @@ class EnvironmentService {
     private listeners: ((state: EnvironmentState) => void)[] = [];
     private _probeCounter: number = 0;
 
+    readonly initialized: Promise<void>;
     constructor() {
-        this.initialize();
+        this.initialized=this.initialize();
     }
 
     private async initialize() {
@@ -43,6 +44,12 @@ class EnvironmentService {
             }
         }
         
+        if (typeof chrome !== 'undefined') chrome.storage?.onChanged?.addListener((changes,area)=>{
+            const target=changes.extenda_backend_target?.newValue;
+            if (area==='local' && (target==='local' || target==='cloud')) {
+                this.state.current=target; this.notify();
+            }
+        });
         this.notify();
         this.startProbing();
     }
@@ -127,7 +134,8 @@ class EnvironmentService {
             }
 
             // 2. Automated Sync (if skipSync is false)
-            if (!options.skipSync) {
+            if (!options.skipSync && typeof window !== 'undefined' && (await chrome.storage.local.get('accessToken')).accessToken &&
+                window.confirm(`Copy your chat history and saved workflows from ${oldUrl} to ${newUrl}? Cancel to switch without copying.`)) {
                 await this.performSync(oldUrl, newUrl);
             }
 
@@ -170,7 +178,7 @@ class EnvironmentService {
 
     private async performSync(fromUrl: string, toUrl: string) {
         console.log(`[EnvService] Synchronizing data...`);
-        const token = localStorage.getItem('accessToken');
+        const token = (await chrome.storage.local.get('accessToken')).accessToken;
         if (!token) {
             console.log('[EnvService] No access token, skipping data sync.');
             return;

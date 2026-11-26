@@ -1,77 +1,57 @@
-import { Pool } from 'pg';
-
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL || 'postgres://postgres:password@localhost:5432/extenda',
-});
+import { and, eq, inArray, sql } from 'drizzle-orm';
+import { db, pool } from '../db/index.js';
+import { executions } from '../db/schema.js';
 
 export class WorkflowPersistence {
-    /**
-     * Save workflow state
-     */
-    static async saveState(
-        executionId: string,
-        state: any,
-        canResume: boolean = true
-    ): Promise<void> {
-        await pool.query(
-            `UPDATE executions 
-             SET state = $1, can_resume = $2, updated_at = NOW()
-             WHERE id = $1`,
-            [state, canResume, executionId]
-        );
-    }
-
-    /**
-     * Pause workflow
-     */
-    static async pauseWorkflow(executionId: string): Promise<void> {
-        await pool.query(
-            `UPDATE executions 
-             SET paused_at = NOW(), can_resume = true
-             WHERE id = $1`,
-            [executionId]
-        );
-    }
-
-    /**
-     * Resume workflow
-     */
-    static async resumeWorkflow(executionId: string): Promise<any> {
+    static async touch(id: string, owner: string) {
         const result = await pool.query(
-            `UPDATE executions 
-             SET resumed_at = NOW(), paused_at = NULL
-             WHERE id = $1
-             RETURNING state`,
-            [executionId]
+            "UPDATE executions SET context=context || jsonb_build_object('lastActivity',extract(epoch from now())) WHERE id=$1 AND user_id=$2 AND status='running'",
+            [id, owner]
         );
-
-        return result.rows[0]?.state;
+        if (!result.rowCount) throw new Error('Execution is no longer running. Check its history.');
     }
 
-    /**
-     * Get resumable workflows for user
-     */
-    static async getResumableWorkflows(userId: number): Promise<any[]> {
-        const result = await pool.query(
-            `SELECT e.id, e.workflow_id, e.state, e.paused_at, w.name, w.intent
-             FROM executions e
-             JOIN workflows w ON e.workflow_id = w.id
-             WHERE e.user_id = $1 AND e.can_resume = true AND e.paused_at IS NOT NULL
-             ORDER BY e.paused_at DESC
-             LIMIT 10`,
-            [userId]
-        );
-
-        return result.rows;
+    static async recoverInterrupted() {
+        // No replay after a crash during a remote write. A recorded review remains resumable.
+        await pool.query(`UPDATE executions SET status='failed',completed_at=now(),
+            error='{"message":"Workflow interrupted. Verify any external action before starting again."}'::jsonb
+            WHERE status='running' AND (CASE WHEN jsonb_typeof(context->'lastActivity')='number' THEN (context->>'lastActivity')::numeric
+                ELSE extract(epoch from started_at::timestamptz) END) < extract(epoch from now()-interval '30 minutes')`);
     }
 
-    /**
-     * Mark workflow as non-resumable
-     */
-    static async markComplete(executionId: string): Promise<void> {
-        await pool.query(
-            `UPDATE executions SET can_resume = false WHERE id = $1`,
-            [executionId]
-        );
+    static async claimReview(id: string, owner: string, digest: string, approved: boolean) {
+        const [claimed] = await db
+            .update(executions)
+            .set({
+                status: approved ? 'running' : 'cancelled',
+                context: sql`${executions.context} || jsonb_build_object('lastActivity',extract(epoch from now()))`
+            })
+            .where(
+                and(
+                    eq(executions.id, id),
+                    eq(executions.userId, owner),
+                    eq(executions.status, 'paused'),
+                    sql`${executions.context}->>'approval' = ${digest}`
+                )
+            )
+            .returning({ context: executions.context });
+        if (!claimed) throw new Error('This approval expired or was already used');
+        return claimed.context as { review?: { id: string } };
+    }
+
+    static async cancel(id: string, owner: string) {
+        const [row] = await db
+            .update(executions)
+            .set({ status: 'cancelled', completedAt: new Date() })
+            .where(
+                and(
+                    eq(executions.id, id),
+                    eq(executions.userId, owner),
+                    inArray(executions.status, ['pending', 'running', 'paused'])
+                )
+            )
+            .returning({ workflowId: executions.workflowId });
+        if (!row) throw new Error('No cancellable workflow');
+        return row.workflowId;
     }
 }

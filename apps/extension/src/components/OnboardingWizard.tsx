@@ -34,7 +34,7 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
             setStep(step + 1);
         } else {
             try {
-                const token = localStorage.getItem('accessToken');
+                const token = (await chrome.storage.local.get('accessToken')).accessToken;
                 const { getApiUrl } = await import('../lib/api');
                 const apiUrl = await getApiUrl();
                 

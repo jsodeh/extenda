@@ -87,6 +87,7 @@ templates.post('/execute', async (c) => {
             .where(
                 and(
                     eq(workflows.id, templateId as any),
+                    or(eq(workflows.isPublic,true),eq(workflows.userId,user.id)),
                     eq(workflows.isTemplate, true)
                 )
             );

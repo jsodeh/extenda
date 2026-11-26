@@ -96,7 +96,7 @@ export class AsanaAdapter extends BaseAdapter {
     actions = ACTIONS;
 
     async execute(actionName: string, params: any, context: any): Promise<any> {
-        const accessToken = process.env.ASANA_ACCESS_TOKEN;
+        const accessToken = context.tokens?.access_token || (context.userId && context.userId === process.env.INTEGRATION_CREDENTIAL_OWNER ? process.env.ASANA_ACCESS_TOKEN : undefined);
         if (!accessToken) {
             // throw new Error('Asana authentication required');
             console.warn('No Asana token provided');

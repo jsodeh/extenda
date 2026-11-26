@@ -15,19 +15,19 @@ const PROVIDER_DATA: Record<Provider, { label: string; iconBaseColor: string; ic
         label: 'Google', 
         iconBaseColor: 'text-blue-500', 
         iconBgColor: 'bg-blue-500/10',
-        models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-2.0-flash-exp', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-1.0-pro']
+        models: ['gemini-flash-latest', 'gemini-pro-latest']
     },
     openai: { 
         label: 'OpenAI', 
         iconBaseColor: 'text-emerald-500', 
         iconBgColor: 'bg-emerald-500/10',
-        models: ['gpt-4o', 'gpt-4o-mini', 'o1-preview', 'o1-mini']
+        models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'gpt-4.1-mini']
     },
     anthropic: { 
         label: 'Anthropic', 
         iconBaseColor: 'text-purple-500', 
         iconBgColor: 'bg-purple-500/10',
-        models: ['claude-3-5-sonnet-latest', 'claude-3-opus-latest', 'claude-3-haiku-20240307']
+        models: ['claude-sonnet-4-6', 'claude-sonnet-5-5']
     },
     ollama: { 
         label: 'Ollama', 

@@ -1,23 +1,13 @@
-// Load environment variables before importing routes
-import dotenv from 'dotenv';
-import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const envPath = resolve(__dirname, '../.env');
-
-dotenv.config({ path: envPath });
-
+import './env.js';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { logger } from 'hono/logger';
 import { authMiddleware, AuthEnv } from './lib/auth.js';
 import { oauth } from './routes/oauth.js';
 import { authOAuth } from './routes/auth-oauth.js';
 import preferences from './routes/preferences.js';
 import templates from './routes/templates.js';
 import user from './routes/user.js';
+import voiceTools from './routes/voice-tools.js';
 import linkedin from './routes/linkedin.js';
 import schedule from './routes/schedule.js';
 import knowledge from './routes/knowledge.js';
@@ -28,7 +18,7 @@ import sync from './routes/sync.js';
 
 const app = new Hono<AuthEnv>();
 
-app.use('*', cors({origin: origin=>origin.startsWith('chrome-extension://') ? origin : '',allowHeaders:['Content-Type','Authorization'],allowMethods:['GET','POST','PUT','DELETE','OPTIONS']}));
+app.use('*', cors({origin: origin=>origin.startsWith('chrome-extension://') ? origin : '',allowHeaders:['Content-Type','Authorization'],allowMethods:['GET','POST','PUT','PATCH','DELETE','OPTIONS']}));
 app.use('*',async(c,next)=>{await next(); console.info(c.req.method,c.req.path.split('/').slice(0,3).join('/'),c.res.status);});
 // Detailed CORS handled in index.ts for better control
 
@@ -42,6 +32,7 @@ app.route('/oauth', oauth);
 app.route('/oauth/auth', authOAuth);
 app.route('/api/preferences', preferences);
 app.route('/api/templates', templates);
+app.route('/api/voice-tools',voiceTools);
 app.route('/api/linkedin',linkedin);
 app.route('/api/schedule',schedule);
 app.route('/api/knowledge', knowledge);
