@@ -2,6 +2,8 @@
 
 An AI-powered browser agent that automates workflows across 14+ integrations with 219 available tools.
 
+The [personal assistant guide](docs/PERSONAL_ASSISTANT.md) covers the document library, reviewed browser forms, calendar scheduling, LinkedIn drafts, local verification and database migration.
+
 ## Features
 
 - **219 AI Tools**: 6 base tools + 213 adapter actions across Gmail, Calendar, Slack, Jira, and more
@@ -15,7 +17,7 @@ An AI-powered browser agent that automates workflows across 14+ integrations wit
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 22+
 - pnpm 8+
 - PostgreSQL 14+
 - Google Cloud project (for Gemini API)
