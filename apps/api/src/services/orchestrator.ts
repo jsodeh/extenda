@@ -29,8 +29,8 @@ export class AgentOrchestrator {
         this.io = io;
     }
 
-    handleToolResult(owner: string, data: ToolExecutionResult) {
-        this.toolResultEmitter.emit(`${owner}_${data.executionId}_${data.stepId}`, data);
+    handleToolResult(owner: string, socketId:string, data: ToolExecutionResult) {
+        this.toolResultEmitter.emit(`${owner}_${socketId}_${data.executionId}_${data.stepId}`, data);
     }
 
     // Initialize Agents
@@ -105,29 +105,6 @@ export class AgentOrchestrator {
             `- ${t.name}: ${t.description} (Params: ${JSON.stringify(t.parameters)})`
         ).join('\n');
 
-        // Add core client tools always? (Notifier, TabManager)
-        // Or should they be injected into every agent?
-        // Let's inject them here for now
-        const clientTools = [
-            '- Notifier: Show notifications to user. Params: { "action": "notify", "message": "text" }',
-            '- TabManager: Manage browser tabs. Params: { "action": "get_active_tab" | "open_tab", "url": "..." }'
-        ].join('\n');
-
-        const aiTools = [
-            '- AIProcessor: Process text. Params: { "action": "summarize" | "analyze" | "categorize", "content": "..." }'
-        ].join('\n');
-
-        const fullToolsContext = `
-AGENT TOOLS:
-${toolsContext}
-
-CLIENT TOOLS:
-${clientTools}
-
-AI TOOLS:
-${aiTools}
-`;
-
         let persona = 'You are Extenda, an AI Executive Assistant. You help users by orchestrating tools to accomplish their tasks efficiently.';
         let customContext = '';
 
@@ -141,9 +118,7 @@ ${aiTools}
         console.log('Generating plan with tools context and knowledge base...');
 
         // Add user context to prevent hallucinations
-        const userContext = user ? `
-User Name: ${user.name || 'User'}
-User Email: ${user.email}` : '';
+
 
         let modeDirectives = '';
         if (modelConfig?.mode === 'Fast') {
@@ -165,14 +140,14 @@ User Email: ${user.email}` : '';
 
         const prompt = `
       ${persona}
-      Current Time: ${new Date().toISOString()}${userContext}
+      Current Time: ${new Date().toISOString()}
       Today is ${new Date().toISOString()}. The user's timezone is ${(user as any).settings?.timezone || 'UTC'}.
       Draft LinkedIn posts with LinkedInAdapter_save_draft first. For requested publication use a separate LinkedInAdapter_create_post for each draftId, time and visibility. Use only public-safe facts and writing preferences. Omit private contact details. Ask before revealing sensitive source information.
       When planning days or weeks, check Calendar free_busy before creating time blocks. Ask about unresolved conflicts. Use PlanningAdapter_schedule for future reminders and deferred work. Use a separate approved action for each destination and time.
       User Request: "${intent}"${historyContext}${formContext}${attachedContext}${knowledgeContext}${customContext}
       
       Available Tools (Use these exact names):
-      ${fullToolsContext}
+      ${toolsContext}
       ${modeDirectives}
       
       Goal: Create a JSON execution plan to fulfill the User Request.
@@ -189,7 +164,8 @@ User Email: ${user.email}` : '';
          - The variable replacement only supports direct JSON or string injection.
       4. If a tool matches (e.g., "summary of emails" -> "list_emails"), you MUST use it.
          - FAVOR BULK ACTIONS: Tools like 'list_emails' return detailed metadata (snippets, subjects). DO NOT generate individual 'get_message' steps for each item unless the user specifically asks for full-body analysis of every item. Efficiency is key.
-      5. UX GUIDELINES:
+      5. Answer questions about supplied personal records directly with cited sources when no external action is requested.
+         UX GUIDELINES:
          - For SEARCH/RETRIEVAL tasks (e.g. "summarize emails", "check calendar"):
            - ALWAYS end with an 'AIProcessor' step (action="summarize" or "analyze") to consolidate findings into a single, natural language summary.
            - The summary should be friendly and actionable.
@@ -222,16 +198,7 @@ User Email: ${user.email}` : '';
     `;
 
         try {
-            // Add timeout to planning phase
-            const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Planning timeout')), 120000)
-            );
-
-            const aiResponse = await Promise.race([
-                generateText(prompt, modelConfig),
-                timeoutPromise
-            ]) as string;
-
+            const aiResponse = await generateText(prompt, modelConfig);
 
             // Robust JSON extraction
             const jsonStart = aiResponse.indexOf('{');
@@ -254,18 +221,30 @@ User Email: ${user.email}` : '';
             try {
                 planData = JSON.parse(cleanJson);
             } catch (parseError: any) {
-                throw new Error(`Failed to parse AI response as JSON: ${parseError.message}`);
+                throw new Error('The planner returned an invalid plan. Please try again.');
             }
 
+            const steps = planData.steps ?? [];
+            if (!Array.isArray(steps) || (!steps.length && typeof planData.directResponse !== 'string'))
+                throw new Error('The planner did not return an answer or a usable workflow');
+            const sources = steps.every((step: WorkflowStep) => step.tool === 'AIProcessor')
+                ? [...new Set(relevantDocs.flatMap(doc => {
+                    const label = /^\[([^\]]+, original ID \d+, [^\]]+)\]/.exec(doc)?.[1];
+                    return label ? [label] : [];
+                }))] : [];
+            if (sources.length && steps.length === 1 && steps[0].tool === 'AIProcessor') {
+                steps[0].params = {...steps[0].params, content: {question:intent, excerpts:relevantDocs}};
+            }
             const workflow: Workflow = {
                 id: randomUUID(),
                 userId: user.id,
                 name: intent.slice(0, 50),
                 intent,
                 definition: {
-                    steps: planData.steps || [],
+                    steps,
+                    knowledgeSources: sources,
                     requiresApproval: planData.requiresApproval ?? false,
-                    directResponse: planData.directResponse
+                    directResponse: typeof planData.directResponse === 'string' && sources.length ? planData.directResponse + '\n\nSources consulted: ' + sources.join(', ') : planData.directResponse
                 },
                 isTemplate: false,
                 isPublic: false,
@@ -298,7 +277,6 @@ User Email: ${user.email}` : '';
         if (execution.userId !== workflow.userId) throw new Error('Workflow unavailable');
         if (requiresApproval) workflow.definition.requiresApproval=true;
         execution.status='running';
-        (execution as any)._workflow=workflow;
         this.activeExecutions.set(execution.id, execution);
 
         // Persist execution
@@ -328,72 +306,60 @@ User Email: ${user.email}` : '';
 
     async resume(executionId: string, owner: string, approved: boolean, digest: string, modelConfig?: ModelConfig, tokens?: any, revised?: Record<string, unknown>) {
         console.log(`Resuming execution ${executionId}, approved: ${approved}`);
-        let execution = this.activeExecutions.get(executionId);
-        let storedWorkflow: Workflow | undefined;
+        const dbExecution = await db.query.executions.findFirst({
+            where: and(eq(executions.id, executionId), eq(executions.userId, owner), eq(executions.status, 'paused'))
+        });
 
-        // Restore from DB if missing (Stateless/Restart handling)
-        if (!execution) {
-            console.log(`Execution ${executionId} not found in memory, fetching from DB...`);
-            const dbExecution = await db.query.executions.findFirst({
-                where: and(eq(executions.id, executionId), eq(executions.userId, owner), eq(executions.status, 'paused'))
-            });
-
-            if (!dbExecution) {
-                throw new Error(`Execution ${executionId} not found`);
-            }
-
-            // Fetch workflow definition
-            const dbWorkflow = await db.query.workflows.findFirst({
-                where: eq(workflows.id, dbExecution.workflowId as any)
-            });
-
-            if (!dbWorkflow) {
-                throw new Error(`Workflow for execution ${executionId} not found`);
-            }
-
-            // Reconstruct execution object
-            storedWorkflow = {
-                ...dbWorkflow,
-                definition: dbWorkflow.definition as any,
-                id: dbWorkflow.id as string,
-                userId: dbWorkflow.userId as string,
-                // Cast logic for safe types
-            } as Workflow;
-
-            // Reconstruct execution steps state from step_executions
-            const dbSteps = await db.query.stepExecutions.findMany({
-                where: eq(stepExecutions.executionId, executionId as any)
-            });
-
-            // Map workflow definition steps to execution status
-            const executionSteps = storedWorkflow.definition.steps.map(s => {
-                const run = dbSteps.find(r => r.stepId === s.id);
-                return {
-                    stepId: s.id,
-                    status: (run?.status || 'pending') as any,
-                    result: run?.result,
-                    error: run?.error,
-                    retryCount: run?.retryCount || 0
-                };
-            });
-
-            execution = {
-                id: dbExecution.id as string,
-                workflowId: dbExecution.workflowId as string,
-                userId: dbExecution.userId as string,
-                status: dbExecution.status as any,
-                startedAt: dbExecution.startedAt!,
-                context: dbExecution.context as any,
-                result: dbExecution.result as any,
-                error: dbExecution.error as any,
-                steps: executionSteps
-            };
-
-            (execution as any)._workflow = storedWorkflow;
-            this.activeExecutions.set(execution.id, execution);
-        } else {
-            storedWorkflow = (execution as any)._workflow as Workflow;
+        if (!dbExecution) {
+            throw new Error(`Execution ${executionId} not found`);
         }
+
+        // Fetch workflow definition
+        const dbWorkflow = await db.query.workflows.findFirst({
+            where: and(eq(workflows.id, dbExecution.workflowId as any),eq(workflows.userId,owner))
+        });
+
+        if (!dbWorkflow) {
+            throw new Error(`Workflow for execution ${executionId} not found`);
+        }
+
+        // Reconstruct execution object
+        const storedWorkflow = {
+            ...dbWorkflow,
+            definition: dbWorkflow.definition as any,
+            id: dbWorkflow.id as string,
+            userId: dbWorkflow.userId as string,
+            // Cast logic for safe types
+        } as Workflow;
+
+        // Reconstruct execution steps state from step_executions
+        const dbSteps = await db.query.stepExecutions.findMany({
+            where: eq(stepExecutions.executionId, executionId as any)
+        });
+
+        // Map workflow definition steps to execution status
+        const executionSteps = storedWorkflow.definition.steps.map(s => {
+            const run = dbSteps.find(r => r.stepId === s.id);
+            return {
+                stepId: s.id,
+                status: (run?.status || 'pending') as any,
+                result: run?.result,
+                error: run?.error,
+                retryCount: run?.retryCount || 0
+            };
+        });
+
+        const execution:Execution = {
+            id: dbExecution.id as string,
+            workflowId: dbExecution.workflowId as string,
+            userId: dbExecution.userId as string,
+            status: dbExecution.status as any,
+            startedAt: dbExecution.startedAt!,
+            context: dbExecution.context as any,
+            result: dbExecution.result as any,
+            error: dbExecution.error as any,
+            steps: executionSteps
+        };
 
         if (execution.userId !== owner || !storedWorkflow || storedWorkflow.userId !== owner || typeof approved !== 'boolean' || !digest) {
             throw new Error('No matching approval');
@@ -401,6 +367,7 @@ User Email: ${user.email}` : '';
         const status = approved ? 'running' : 'cancelled';
         if (revised !== undefined && (!approved || !revised || typeof revised!=='object' || Array.isArray(revised))) throw new Error('Invalid revised parameters');
         const claimed=await WorkflowPersistence.claimReview(executionId,owner,digest,approved);
+        this.activeExecutions.set(executionId,execution);
         if (revised) {
             const pending=claimed.review;
             if (!pending) throw new Error('Invalid review');
@@ -463,11 +430,11 @@ User Email: ${user.email}` : '';
                     if (execution.context.browserTarget && ((step.tool==='TabManager' && ['close','close_tab'].includes(step.params.action)) || step.tool==='Tab Management_Close Tab')) {
                         Object.assign(step.params,execution.context.browserTarget);
                     }
-                    if (execution.context.browserTarget && /^(FormFiller|DOMReader|SmartClick|Screenshot|Browser Interaction_)/.test(step.tool || '')) {
+                    if (execution.context.browserTarget && /^(FormFiller|DOMReader|GmailScraper|SmartClick|Screenshot|Browser Interaction_)/.test(step.tool || '')) {
                         step.params.tabId=execution.context.browserTarget.tabId;
                         step.params.targetUrl=execution.context.browserTarget.targetUrl;
                     }
-                    if (/^(FormFiller|SmartClick|Screenshot|Browser Interaction_(Smart Click|Fill Forms|Take Screenshot))$/.test(step.tool || '') && !execution.context.browserTarget?.targetUrl)
+                    if (/^(FormFiller|DOMReader|GmailScraper|SmartClick|Screenshot|Browser Interaction_(Smart Click|Read Page Content|Fill Forms|Take Screenshot))$/.test(step.tool || '') && !execution.context.browserTarget?.targetUrl)
                         throw new Error('Select the intended browser page and try again');
                     if (step.tool === 'FormFiller' && step.params.action === 'attach') {
                         const original = await knowledgeBase.original(execution.userId,Number(step.params.documentId));
@@ -594,6 +561,8 @@ User Email: ${user.email}` : '';
                         }
 
                         if (richSummary) {
+                            if (workflow.definition.knowledgeSources?.length)
+                                richSummary += '\n\nSources consulted: ' + workflow.definition.knowledgeSources.join(', ');
                             // Persist and emit existing summary
                             await this.addMessage(execution.context.sessionId, 'assistant', richSummary!);
                             this.emittedSummaries.add(execution.id);
@@ -669,8 +638,8 @@ Generate a brief, friendly, conversational response summarizing the result for t
                 error: error instanceof Error ? error.message : String(error)
             });
         } finally {
+            this.activeExecutions.delete(execution.id);
             if (execution.status !== 'paused') {
-                this.activeExecutions.delete(execution.id);
                 // Final update
                 await db.update(executions).set({
                     status: execution.status === 'failed' ? 'failed' : 'completed',
@@ -686,6 +655,8 @@ Generate a brief, friendly, conversational response summarizing the result for t
         step: WorkflowStep,
         stepResults: Map<string, any>, approval?: string
     ): Promise<any> {
+        if (needsApproval(step.tool || '',step.params) && approval!==approvalDigest(execution.userId,execution.id,step))
+            throw new Error('This action requires review of its final parameters');
         // Notify step start
         this.io?.to(`user:${execution.userId}`).emit(EVENTS_SERVER.WORKFLOW_STEP_START, { workflowId: execution.workflowId, step });
 
@@ -705,7 +676,7 @@ Generate a brief, friendly, conversational response summarizing the result for t
         } as any);
 
         try {
-            console.log(`[Orchestrator] Executing step ${step.id} (DEPLOYMENT_CHECK_V3). Tool: '${step.tool}', Type: ${step.type}`);
+            console.log(`[Orchestrator] Executing step ${step.id}. Tool: '${step.tool}', Type: ${step.type}`);
 
             let result;
             if (step.type === 'tool' && step.tool) {
@@ -872,7 +843,7 @@ Generate a brief, friendly, conversational response summarizing the result for t
         const room = this.io.sockets.adapter.rooms.get(`browser:${userId}`);
         if (!room || room.size !== 1) throw new Error('Connect one browser extension to execute this action');
         const [target] = room;
-        const key = `${userId}_${executionId}_${stepId}`;
+        const key = `${userId}_${target}_${executionId}_${stepId}`;
         return new Promise((resolve, reject) => {
             const timer = setTimeout(() => {
                 this.toolResultEmitter.off(key, receive);
@@ -898,57 +869,7 @@ Generate a brief, friendly, conversational response summarizing the result for t
         return messages.map(m => `${m.role.toUpperCase()}: ${m.content}`);
     }
 
-    getAvailableToolsContext(preferences?: any): string {
-        const enabledTools = preferences?.enabledTools as string[] | undefined;
-        // If enabledTools is defined but empty, it might mean "no tools enabled" or "not configured". 
-        // Let's assume if it's undefined or null, we show ALL (default).
-        // If it's an array (even empty), we respect it.
-        const shouldFilter = Array.isArray(enabledTools);
 
-        const clientTools = [
-            '- Notifier: Show notifications to user. Params: { "action": "notify", "message": "text" }',
-            '- TabManager: Manage browser tabs. Params: { "action": "get_active_tab" | "open_tab", "url": "..." }'
-        ].join('\n');
-
-        const aiTools = [
-            '- AIProcessor: Process text. Params: { "action": "summarize" | "analyze" | "categorize", "content": "..." }'
-        ].join('\n');
-
-        const adapterTools = adapterRegistry.getAll().flatMap(adapter =>
-            adapter.actions
-                .filter(action => {
-                    const toolName = `${adapter.name}_${action.name}`;
-                    return !shouldFilter || enabledTools.includes(toolName);
-                })
-                .map(action => {
-                    let outputHint = '';
-                    if (adapter.name === 'GmailAdapter' && action.name === 'list_emails') {
-                        outputHint = ' (Output: { emails: [{ subject, from, snippet, date, body }] })';
-                    }
-                    return `- ${adapter.name}_${action.name}: ${action.description} (Params: ${JSON.stringify(action.parameters)})${outputHint}`;
-                })
-        ).join('\n');
-
-        const otherTools = toolRegistry.getAll()
-            .filter(t => t.name !== 'Notifier' && t.name !== 'TabManager' && t.name !== 'AIProcessor' && !t.name.includes('_'))
-            .filter(t => !shouldFilter || enabledTools.includes(t.name))
-            .map(t => `- ${t.name}: ${t.description} (Params: ${JSON.stringify(t.parameters)})`)
-            .join('\n');
-
-        return `
-CLIENT TOOLS (Browser/User Interface):
-${clientTools}
-
-AI CAPABILITIES:
-${aiTools}
-
-INTEGRATIONS (External Services):
-${adapterTools}
-
-OTHER TOOLS:
-${otherTools}
-`;
-    }
 }
 
 export const orchestrator = new AgentOrchestrator();

@@ -22,7 +22,7 @@ sync.get('/export', async (c) => {
             exportedAt: new Date().toISOString()
         });
     } catch (error) {
-        console.error('Export error:', error);
+        console.error('Export error');
         return c.json({ error: 'Failed to export data' }, 500);
     }
 });
@@ -48,7 +48,7 @@ sync.post('/import', async (c) => {
             message: `Successfully imported ${result.count} sessions` 
         });
     } catch (error) {
-        console.error('Import error:', error);
+        console.error('Import error');
         return c.json({ error: 'Failed to import data. Check your secret key.' }, 500);
     }
 });

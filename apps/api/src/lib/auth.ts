@@ -41,8 +41,13 @@ export const authMiddleware = async (c: Context, next: Next) => {
         c.set('user', user);
 
     } catch (err) {
-        console.error('Auth Middleware Error:', err);
+        console.error('Auth Middleware Error');
         return c.json({ error: 'Unauthorized: Session expired or invalid' }, 401);
     }
     await next();
 };
+
+export function allowedExtensionOrigin(origin: string) {
+    return /^chrome-extension:\/\/[a-p]{32}$/.test(origin) && (process.env.NODE_ENV !== 'production' ||
+        (process.env.EXTENSION_ORIGINS || '').split(',').some(value => value.trim() === origin));
+}

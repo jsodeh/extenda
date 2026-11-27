@@ -75,7 +75,7 @@ async function identifyElementFromScreenshot(
  */
 export async function handleSmartClick(params: SmartClickParams): Promise<SmartClickResult> {
     try {
-        console.log('[SmartClick] Starting with description:', params.description);
+
 
         // 1. Capture screenshot
         const screenshot = await captureScreenshotBase64(params);
@@ -91,7 +91,7 @@ export async function handleSmartClick(params: SmartClickParams): Promise<SmartC
             };
         }
 
-        console.log('[SmartClick] Element identified:', element);
+
 
         // 3. Perform action
         if (params.action === 'identify') {
@@ -117,7 +117,7 @@ export async function handleSmartClick(params: SmartClickParams): Promise<SmartC
         };
 
     } catch (error: any) {
-        console.error('[SmartClick] Error:', error);
+        console.error('[SmartClick] Failed');
         return {
             success: false,
             error: error.message

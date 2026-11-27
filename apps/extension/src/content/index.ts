@@ -7,7 +7,7 @@ import { DOMReader, DOMReaderParams } from './dom-reader';
 import { GmailScraper } from './gmail-scraper';
 import { FormFiller, FormFillerParams } from './form-filler';
 
-console.log('[Extenda] Content script loaded on:', window.location.href);
+
 
 // Message types
 interface ContentScriptMessage {
@@ -188,6 +188,8 @@ async function handleClickAtCoordinates(
 
         if (element.closest('form,[form]')) throw new Error('Review the form and use the form submission tool');
         if (!(element instanceof HTMLElement)) throw new Error('Element unavailable');
+        const label = element.closest('[aria-label]')?.getAttribute('aria-label') || element.textContent?.trim() || element.tagName;
+        if (!window.confirm('Click ' + label.slice(0,200) + ' on ' + location.href + '?')) throw new Error('Click declined');
         element.click();
 
         return {

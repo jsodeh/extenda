@@ -238,8 +238,8 @@ export async function executeTool(
         if (!tab?.id || !tab.url || !/^https?:/.test(tab.url)) throw new Error('Select a supported page');
         args={...args,tabId:tab.id,targetUrl:tab.url};
     }
-    if (['smart_click','fill_form','close_tab','open_tab','screenshot'].includes(name)
-        && !window.confirm(`Approve ${name}?\n${JSON.stringify(args, null, 2)}`)) throw new Error('Action declined');
+    if (['smart_click','fill_form','close_tab','open_tab','screenshot','read_page','list_tabs','get_emails','get_calendar_events','search_drive'].includes(name)
+        && !window.confirm(`Approve ${name} for this Gemini voice session?\n${JSON.stringify(args, null, 2)}`)) throw new Error('Action declined');
 
     // Handle instant tools
     if (name === 'get_current_time') {
@@ -264,13 +264,13 @@ async function executeClientTool(name: string, args: Record<string, any>): Promi
     const toolMapping: Record<string, { handler: string; params: any }> = {
         'open_tab': { handler: 'TabManager', params: { action: 'open', url: args.url } },
         'close_tab': { handler: 'TabManager', params: { action: 'close',tabId:args.tabId,targetUrl:args.targetUrl } },
-        'switch_tab': { handler: 'TabManager', params: { action: 'switch', ...args } },
+        'switch_tab': { handler: 'TabManager', params: { ...args, action: 'switch' } },
         'list_tabs': { handler: 'TabManager', params: { action: 'list' } },
         'smart_click': { handler: 'SmartClick', params: args },
         'screenshot': { handler: 'Screenshot', params: args },
-        'read_page': { handler: 'DOMReader', params: { action: 'extract_text', ...args } },
+        'read_page': { handler: 'DOMReader', params: { ...args, action: 'extract_text' } },
         'fill_form': { handler: 'FormFiller', params: { ...args, action: 'fill_text' } },
-        'notify': { handler: 'Notifier', params: { action: 'notify', ...args } }
+        'notify': { handler: 'Notifier', params: { ...args, action: 'notify' } }
     };
 
     const mapping = toolMapping[name];

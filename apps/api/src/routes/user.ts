@@ -29,7 +29,7 @@ user.get('/export', async (c) => {
 
         return c.json(data);
     } catch (error) {
-        console.error('Data export error:', error);
+        console.error('Data export error');
         return c.json({ error: 'Export failed or unauthorized' }, 500);
     }
 });
@@ -46,7 +46,7 @@ user.delete('/account', async (c) => {
 
         return c.json({ success: true, message: 'Account deleted successfully' });
     } catch (error) {
-        console.error('Account deletion error:', error);
+        console.error('Account deletion error');
         return c.json({ error: 'Deletion failed' }, 500);
     }
 });

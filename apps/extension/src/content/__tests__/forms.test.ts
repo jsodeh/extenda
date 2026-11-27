@@ -55,3 +55,24 @@ test('advances an in-page form and requires a new confirmation message after app
         submit.mockRestore();
     }
 });
+
+test('inspects only visible steps and selects an option from the linked accessible list', async () => {
+    document.body.innerHTML = '<form><section style="display:none"><input required></section>' +
+        '<button type="button" role="combobox" aria-controls="choices" aria-label="Role">Choose</button>' +
+        '<div id="choices" role="listbox"><div role="option">Engineer</div></div></form>';
+    const fields = DOMReader.execute({action:'inspect_form'}).data;
+    expect(fields.some((f: any) => f.required)).toBe(false);
+    expect(fields.find((f:any) => f.type === 'combobox').options[0].label).toBe('Engineer');
+    document.querySelector('[role=option]')!.addEventListener('click', e => (e.target as HTMLElement).setAttribute('aria-selected','true'));
+    expect((await FormFiller.execute({action:'select', selector:'[role=combobox]',value:'Engineer'})).success).toBe(true);
+});
+
+test('checks the applied value after a controlled input rerenders and rejects external form actions', async () => {
+    document.body.innerHTML = '<form><input name="profile"></form>';
+    document.querySelector('input')!.addEventListener('input', () => {
+        queueMicrotask(() => { document.querySelector('input')!.value = ''; });
+    });
+    expect((await FormFiller.execute({action:'fill_text',selector:'input',value:'Fixture'})).success).toBe(false);
+    document.querySelector('form')!.action='https://other.example.test/apply';
+    expect((await FormFiller.execute({action:'fill_text',selector:'input',value:'Fixture'})).error).toMatch(/another origin/);
+});

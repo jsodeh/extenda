@@ -49,7 +49,7 @@ export class PreferencesService {
 
             return prefs;
         } catch (error) {
-            console.error('[PreferencesService] Error fetching preferences (possibly missing columns):', error);
+            console.error('[PreferencesService] Error fetching preferences (possibly missing columns)');
             
             // Fallback: If the column is missing, try a simpler select if possible, or return defaults
             // For now, return a basic object based on what we know must exist
@@ -98,7 +98,7 @@ export class PreferencesService {
                 }
             });
         } catch (error) {
-            console.error('[PreferencesService] Error upserting preferences:', error);
+            console.error('[PreferencesService] Error upserting preferences');
             // If the column doesn't exist, try a degraded fallback (update only known columns)
             try {
                 const { toolPermissions, ...basePrefs } = preferences;

@@ -44,7 +44,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
             }
             if (req.method === 'GET') {
                 res.writeHead(200, { 'content-type': 'text/html' });
-                res.end(`<form action="/apply"><label>Full name<input id="name" name="name" required></label><button type="button" id="next">Continue</button></form><script>
+                res.end(`<form action="/apply"><label>Full name<input id="name" name="name" required></label><input id="attachment" type="file" accept=".txt"><button type="button" id="next">Continue</button></form><script>
         document.querySelector('#next').onclick=e=>{e.target.outerHTML='<button id="send" type="submit">Apply</button>';};
         document.querySelector('form').onsubmit=e=>{e.preventDefault();document.body.insertAdjacentHTML('beforeend','<h2>Application received</h2>');};</script>`);
                 return;
@@ -213,6 +213,13 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
             },
             { formUrl, type, params }
         );
+    // Content scripts are installed at document_idle, after navigation can already be complete.
+    let ready = false;
+    for (let attempt = 0; attempt < 40 && !ready; attempt++) {
+        ready = await dispatch('PING', {}).then(result => result?.success === true, () => false);
+        if (!ready) await delay(100);
+    }
+    assert.ok(ready, 'Content script did not become available on the fixture page');
     const read = await dispatch('EXECUTE_DOM_READER', { action: 'inspect_form' });
     assert.ok(read.data.some((row) => row.label === 'Full name' && row.required));
     const changed = await dispatch('EXECUTE_FORM_FILLER', {
@@ -227,6 +234,11 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
             .success,
         true
     );
+    const sampleFile = {name:'fixture.txt',type:'text/plain',bytes:[65,66]};
+    const attachment = {action:'attach',selector:'#attachment',file:sampleFile};
+    assert.equal((await dispatch('EXECUTE_FORM_FILLER', attachment)).success,true);
+    assert.equal(await form.locator('#attachment').evaluate(e => e.files[0].name),'fixture.txt');
+    assert.equal((await dispatch('EXECUTE_FORM_FILLER', attachment)).success,false);
     assert.equal((await dispatch('EXECUTE_FORM_FILLER', { action: 'advance', selector: '#next' })).success, true);
     form.once('dialog', async (d) => {
         assert.match(d.message(), /name: Fixture/);
@@ -248,6 +260,26 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         mode: 'Fast'
     };
     client = io('http://localhost:55871', { auth: { token }, transports: ['websocket'] });
+    // A browser peer must never consume a side-panel approval even with the correct digest.
+    const browserPeer = io('http://localhost:55871',{auth:{token,role:'browser'},transports:['websocket'],autoConnect:false});
+    const voice = await fetch('http://localhost:55871/api/voice-tools/send_email',{method:'POST',
+        headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+        body:JSON.stringify({params:{to:'fixture@example.test',subject:'fixture',body:'fixture'}})});
+    assert.equal(voice.status,202);
+    const {executionId} = await voice.json();
+    try {
+        await new Promise((resolve,reject) => { browserPeer.once('connect',resolve);browserPeer.once('connect_error',reject);browserPeer.connect(); });
+        const state = async () => (await pool.query('SELECT status,context FROM executions WHERE id=$1 AND user_id=$2',[executionId,owner])).rows[0];
+        const pending = await state();
+        browserPeer.emit('workflow:resume',{executionId,approval:pending.context.approval,approved:true});
+        // Socket.IO preserves event order. A subsequent Engine.IO round trip also waits for network delivery.
+        await delay(250);
+        assert.equal((await state()).status,'paused');
+        client.emit('workflow:cancel',{executionId});
+        for(let i=0;i<40 && (await state()).status!=='cancelled';i++) await delay(50);
+        assert.equal((await state()).status,'cancelled');
+        console.log('PASS: voice email requires approval and a browser-role socket cannot accept it');
+    } finally { browserPeer.disconnect(); }
     const reviewed = [];
     await new Promise((resolve, reject) => {
         const timeout = setTimeout(

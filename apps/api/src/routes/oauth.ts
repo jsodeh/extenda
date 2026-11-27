@@ -171,7 +171,7 @@ oauth.get('/callback/:provider', async (c) => {
             </html>
         `);
     } catch (error) {
-        console.error('OAuth callback error:', error);
+        console.error('OAuth callback error');
         return c.json({ error: 'Internal server error' }, 500);
     }
 });
@@ -192,7 +192,7 @@ oauth.get('/status', async (c) => {
         const providers = await oauthManager.getConnectedProviders(user.id);
         return c.json({ connectedProviders: providers });
     } catch (error) {
-        console.error('Failed to get OAuth status:', error);
+        console.error('Failed to get OAuth status');
         return c.json({ error: 'Failed to retrieve OAuth status' }, 500);
     }
 });
@@ -209,7 +209,7 @@ oauth.delete('/disconnect/:provider', async (c) => {
         await oauthManager.deleteCredentials(user.id, provider);
         return c.json({ success: true });
     } catch (error) {
-        console.error('Failed to disconnect provider:', error);
+        console.error('Failed to disconnect provider');
         return c.json({ error: 'Failed to disconnect provider' }, 500);
     }
 });

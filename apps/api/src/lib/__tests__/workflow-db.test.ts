@@ -8,6 +8,7 @@ it(
     { skip: !process.env.TEST_DATABASE_URL },
     async () => {
         process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
+        process.env.JWT_SECRET = randomUUID();
         const { pool } = await import('../../db/index.js');
         const { runMigrations } = await import('../../db/migrate.js');
         const { AgentOrchestrator } = await import('../../services/orchestrator.js');
@@ -26,7 +27,7 @@ it(
         };
         const writes: string[] = [];
         toolRegistry.register({
-            name: 'FixtureAdapter_get_record',
+            name: 'FormAnswers',
             execute: async () => ({ answer: 'verified' })
         } as any);
         toolRegistry.register({
@@ -37,7 +38,7 @@ it(
             }
         } as any);
         toolRegistry.register({
-            name: 'FixtureAdapter_get_failure',
+            name: 'AIProcessor',
             execute: async () => ({ success: false, error: 'required step failed' })
         } as any);
         const start = async (tools: string[]) => {
@@ -80,7 +81,16 @@ it(
         await runMigrations();
         try {
             await pool.query('INSERT INTO users(id,email) VALUES($1,$2)', [owner, owner + '@example.test']);
-            const id = await start(['FixtureAdapter_get_record', 'FixtureAdapter_write', 'FixtureAdapter_write']);
+            const voice = (await import('../../routes/voice-tools.js')).default;
+            const { sign } = await import('hono/jwt');
+            const response = await voice.request('/send_email',{method:'POST',headers:{
+                Authorization:'Bearer '+await sign({userId:owner},process.env.JWT_SECRET!),'Content-Type':'application/json'
+            },body:JSON.stringify({params:{to:'fixture@example.test',body:'Fixture',subject:'Local review'}})});
+            assert.equal(response.status,202);
+            const pending = await response.json() as {executionId:string};
+            assert.equal((await state(pending.executionId)).context.review.tool,'GmailAdapter_send_email');
+            await runner().cancel(pending.executionId,owner);
+            const id = await start(['FormAnswers', 'FixtureAdapter_write', 'FixtureAdapter_write']);
             const paused = await state(id);
             assert.equal(paused.status, 'paused');
             assert.equal(paused.context.review.params.value, 'verified');
@@ -99,7 +109,7 @@ it(
             assert.equal((await state(id)).status, 'cancelled');
             await assert.rejects(runner().resume(id, owner, true, next.context.approval));
             assert.equal(writes.length, 1);
-            assert.equal((await state(await start(['FixtureAdapter_get_failure']))).status, 'failed');
+            assert.equal((await state(await start(['AIProcessor']))).status, 'failed');
             const interrupted = await start(['FixtureAdapter_write']);
             await pool.query(
                 "UPDATE executions SET status='running',started_at=now()-interval '1 hour' WHERE id=$1",

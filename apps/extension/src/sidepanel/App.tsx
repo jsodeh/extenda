@@ -361,10 +361,12 @@ function AppContent() {
         });
 
         wsClient.on('workflow:step_start', (data: any) => {
+            if (data.workflowId && workflowRef.current?.id && data.workflowId !== workflowRef.current.id) return;
             updateWorkflowStep(data.step.id, { status: 'in-progress' });
         });
 
         wsClient.on('workflow:step_complete', (data: any) => {
+            if (data.workflowId && workflowRef.current?.id && data.workflowId !== workflowRef.current.id) return;
             updateWorkflowStep(data.stepId, {
                 status: 'completed',
                 result: data.result
@@ -372,25 +374,17 @@ function AppContent() {
         });
 
         wsClient.on('workflow:complete', (data: any) => {
+            if (data.workflowId && workflowRef.current?.id && data.workflowId !== workflowRef.current.id) return;
             setCurrentExecutionId(null);
             // Persist the final state of the workflow to the message history
             if (workflowRef.current) {
                 const finalWorkflow = workflowRef.current;
                 setMessages(prev => {
-                    // Force all steps to completed state to prevent stuck spinners
-                    const finalSteps = finalWorkflow.steps.map(s => ({
-                        ...s,
-                        status: 'completed' as const,
-                        result: s.result
-                    }));
-
-                    const completedWorkflow = { ...finalWorkflow, steps: finalSteps };
-
                     const updated = prev.map(msg => {
                         if (msg.workflow?.id === finalWorkflow.id) {
                             return {
                                 ...msg,
-                                workflow: completedWorkflow
+                                workflow: finalWorkflow
                             };
                         }
                         return msg;
@@ -406,6 +400,7 @@ function AppContent() {
         });
 
         wsClient.on('chat:response', (data: any) => {
+            if (data.sessionId && sessionIdRef.current && data.sessionId !== sessionIdRef.current) return;
             setAgentStatus(null);
             
             // Deduplication: Don't add if identical to last message in short window

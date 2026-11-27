@@ -11,7 +11,7 @@ it('requires review of each external write even in Fast mode', () => {
         'GmailAdapter_send_email',
         'GoogleDriveAdapter_share_file',
         'SlackAdapter_send_message',
-        'Unknown'
+        'Unknown', 'UnknownAdapter_get_payload', 'GmailScraper', 'GmailAdapter_list_emails'
     ]) {
         assert.equal(needsApproval(tool, { mode: 'Fast' }), true);
     }

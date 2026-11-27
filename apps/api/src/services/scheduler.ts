@@ -47,6 +47,8 @@ export async function executeDueJobs(limit = 40, onlyId?: string) {
         if (!job) return;
         let externalStarted = false;
         try {
+            if (!job.approval || !['reminder','calendar','linkedin'].includes(job.action))
+                throw new Error('Unapproved or unsupported action');
             let result: any;
             if (job.action === 'reminder') {
                 await pool.query(
@@ -86,31 +88,31 @@ export async function executeDueJobs(limit = 40, onlyId?: string) {
                 due_at=CASE WHEN recurrence='once' THEN due_at ELSE (
                     SELECT min(t AT TIME ZONE timezone) FROM generate_series(due_at AT TIME ZONE timezone,
                     (now() AT TIME ZONE timezone)+interval '8 days', CASE recurrence WHEN 'daily' THEN interval '1 day' ELSE interval '7 days' END) t
-                    WHERE t AT TIME ZONE timezone > now()) END WHERE id=$1 AND status='running'`,
-                [job.id, result]
+                    WHERE t AT TIME ZONE timezone > now()) END WHERE id=$1 AND status='running' AND attempts=$3`,
+                [job.id, result, job.attempts]
             );
         } catch (error) {
             if (error instanceof ProviderFailure && error.status === 429 && job.attempts < 3) {
                 await pool.query(
-                    "UPDATE scheduled_jobs SET status='pending',due_at=now()+$2*interval '1 second' WHERE id=$1",
-                    [job.id, Math.min(3600, Math.max(60, error.retryAfter))]
+                    "UPDATE scheduled_jobs SET status='pending',due_at=now()+$2*interval '1 second' WHERE id=$1 AND status='running' AND attempts=$3",
+                    [job.id, Math.max(60, error.retryAfter), job.attempts]
                 );
                 continue;
             }
-            if (error instanceof ProviderFailure && error.status < 500) {
-                await pool.query("UPDATE scheduled_jobs SET status='failed',result=$2 WHERE id=$1", [
+            if (error instanceof ProviderFailure && error.status < 500 && ![408,409].includes(error.status)) {
+                await pool.query("UPDATE scheduled_jobs SET status='failed',result=$2 WHERE id=$1 AND status='running' AND attempts=$3", [
                     job.id,
-                    { message: error.message }
+                    { message: error.message }, job.attempts
                 ]);
                 continue;
             }
             const message = externalStarted
                 ? 'Check provider history before retrying'
                 : 'Delivery failed. Check account connection.';
-            await pool.query('UPDATE scheduled_jobs SET status=$2,result=$3 WHERE id=$1', [
+            await pool.query("UPDATE scheduled_jobs SET status=$2,result=$3 WHERE id=$1 AND status='running' AND attempts=$4", [
                 job.id,
                 externalStarted ? 'uncertain' : 'failed',
-                { message }
+                { message }, job.attempts
             ]);
         }
     }

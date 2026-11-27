@@ -1,3 +1,4 @@
+import { allowedExtensionOrigin } from '../lib/auth.js';
 import { oauthManager } from '../services/oauth-manager.js';
 import { getCookie,setCookie,deleteCookie } from 'hono/cookie';
 import { Hono } from 'hono';
@@ -89,14 +90,13 @@ authOAuth.get('/:provider', (c) => {
     const provider = c.req.param('provider') as keyof typeof OAUTH_AUTH_PROVIDERS;
     const config = OAUTH_AUTH_PROVIDERS[provider];
 
-    if (!config) {
+    if (!Object.hasOwn(OAUTH_AUTH_PROVIDERS,provider) || !config) {
         return c.json({ error: 'Invalid OAuth provider' }, 400);
     }
 
     // Generate state for CSRF protection
     const origin=c.req.query('origin') || '';
-    const allowed=(process.env.EXTENSION_ORIGINS || '').split(',').map(o=>o.trim());
-    if (!/^chrome-extension:\/\/[a-p]{32}$/.test(origin) || (process.env.NODE_ENV==='production' && !allowed.includes(origin)))
+    if (!allowedExtensionOrigin(origin))
         return c.json({error:'Register this Chrome extension origin before signing in'},400);
     const state = crypto.randomUUID();
 
@@ -135,7 +135,7 @@ authOAuth.get('/callback/:provider', async (c) => {
     const provider = c.req.param('provider') as keyof typeof OAUTH_AUTH_PROVIDERS;
     const config = OAUTH_AUTH_PROVIDERS[provider];
 
-    if (!config) {
+    if (!Object.hasOwn(OAUTH_AUTH_PROVIDERS,provider) || !config) {
         return c.json({ error: 'Invalid OAuth provider' }, 400);
     }
 
@@ -144,7 +144,7 @@ authOAuth.get('/callback/:provider', async (c) => {
     const error = c.req.query('error');
 
     const [expected,origin,boundProvider]=(getCookie(c,'oauth_auth_state') || '').split('|');
-    if (!state || state!==expected || provider!==boundProvider || !/^chrome-extension:\/\/[a-p]{32}$/.test(origin || '')) return c.json({error:'OAuth state expired'},400);
+    if (!state || state!==expected || provider!==boundProvider || !allowedExtensionOrigin(origin || '')) return c.json({error:'OAuth state expired'},400);
     deleteCookie(c,'oauth_auth_state',{path:'/oauth/auth'});
     if (error) {
         return sendErrorResponse(c, provider, 'Authorization declined');

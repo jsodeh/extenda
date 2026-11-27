@@ -1,7 +1,7 @@
 import './env.js';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { authMiddleware, AuthEnv } from './lib/auth.js';
+import { allowedExtensionOrigin, AuthEnv } from './lib/auth.js';
 import { oauth } from './routes/oauth.js';
 import { authOAuth } from './routes/auth-oauth.js';
 import preferences from './routes/preferences.js';
@@ -18,7 +18,7 @@ import sync from './routes/sync.js';
 
 const app = new Hono<AuthEnv>();
 
-app.use('*', cors({origin: origin=>origin.startsWith('chrome-extension://') ? origin : '',allowHeaders:['Content-Type','Authorization'],allowMethods:['GET','POST','PUT','PATCH','DELETE','OPTIONS']}));
+app.use('*', cors({origin: origin=>allowedExtensionOrigin(origin) ? origin : '',allowHeaders:['Content-Type','Authorization'],allowMethods:['GET','POST','PUT','PATCH','DELETE','OPTIONS']}));
 app.use('*',async(c,next)=>{await next(); console.info(c.req.method,c.req.path.split('/').slice(0,3).join('/'),c.res.status);});
 // Detailed CORS handled in index.ts for better control
 

@@ -80,7 +80,7 @@ export class VoiceSessionManager {
                 };
 
                 this.ws.onclose = (event) => {
-                    console.log('[VoiceSession] WebSocket closed:', event.code, event.reason);
+                    console.log('[VoiceSession] WebSocket closed:', event.code);
                     this.setStatus('disconnected');
                 };
             } catch (error) {
@@ -186,7 +186,7 @@ When using tools, execute immediately - don't ask for confirmation unless the ac
             }
 
         } catch (error) {
-            console.error('[VoiceSession] Error parsing message:', error);
+            console.error('[VoiceSession] Invalid server message');
         }
     }
 
@@ -251,7 +251,7 @@ When using tools, execute immediately - don't ask for confirmation unless the ac
                     response: { result: JSON.stringify(result) }
                 });
             } catch (error: any) {
-                console.error('[VoiceSession] Tool error:', name, error);
+                console.error('[VoiceSession] Tool failed:', name);
 
                 responses.push({
                     id,

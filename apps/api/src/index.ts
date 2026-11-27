@@ -16,7 +16,7 @@ import { orchestrator } from './services/orchestrator.js';
 import { intentClassifier } from './services/intent-classifier.js';
 import { generateText } from './lib/models.js';
 import { verify } from 'hono/jwt';
-import { authMiddleware, AuthEnv } from './lib/auth.js';
+import { authMiddleware, allowedExtensionOrigin, AuthEnv } from './lib/auth.js';
 import { authOAuth } from './routes/auth-oauth.js';
 import { db,pool } from './db/index.js';
 import { users, executions, workflows } from './db/schema.js';
@@ -44,7 +44,7 @@ console.log('Server initialized.');
 
 const io = new Server(server, {
     cors: {
-        origin: "*",
+        origin: (origin, done) => done(null, !origin || allowedExtensionOrigin(origin)),
         methods: ["GET", "POST"]
     },
     pingTimeout: 120000,      // 120s - double default, prevents disconnects during long ops
@@ -57,7 +57,7 @@ try {
     orchestrator.setServer(io);
     console.log('Orchestrator configured.');
 } catch (err) {
-    console.error('Failed to configure orchestrator:', err);
+    console.error('Failed to configure orchestrator');
 }
 
 
@@ -66,6 +66,8 @@ try {
 // Socket Authentication Middleware
 io.use(async (socket, next) => {
     try {
+        const origin = socket.handshake.headers.origin;
+        if (origin && !allowedExtensionOrigin(origin)) return next(new Error('Unregistered extension origin'));
         const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.split(' ')[1];
 
         if (!token) {
@@ -95,10 +97,11 @@ io.use(async (socket, next) => {
         }
 
         // Attach user to socket
+        socket.data.expiresAt=Number(payload.exp)*1000;
         (socket as any).user = user;
         next();
     } catch (err) {
-        console.error('Socket connection rejected (JWT/Auth Error):', err);
+        console.error('Socket connection rejected (JWT/Auth Error)');
         next(new Error('Authentication error - Session verification failed'));
     }
 });
@@ -106,10 +109,17 @@ io.use(async (socket, next) => {
 io.on('connection', (socket) => {
     const user = (socket as any).user;
 
-    // Join user-specific room so all user's sockets (sidepanel + background) receive events
-    socket.join(`user:${user.id}`);
-    if (socket.handshake.auth.role === 'browser') socket.join(`browser:${user.id}`);
-    console.log(`Socket ${socket.id} joined room user:${user.id}`);
+    const browser=socket.handshake.auth.role==='browser';
+    socket.use(([event],next)=>{
+        if (Date.now()>=socket.data.expiresAt) {socket.disconnect(true);return;}
+        if (browser && event.startsWith('workflow:')) return next(new Error('Review workflows in the side panel'));
+        next();
+    });
+    if (Number.isFinite(socket.data.expiresAt)) {
+        const expiry=setTimeout(()=>socket.disconnect(true),Math.min(2147483647,socket.data.expiresAt-Date.now()));
+        socket.once('disconnect',()=>clearTimeout(expiry));
+    }
+    socket.join(browser ? `browser:${user.id}` : `user:${user.id}`);
 
     if (socket.handshake.auth.role !== 'browser') {
         const restoreReview=async(sessionId?:string)=>{
@@ -138,8 +148,8 @@ io.on('connection', (socket) => {
     // CRITICAL: This was missing before — tool:result events from clients were silently dropped
     // because io.on() only handles 'connection' events, not client-emitted events.
     socket.on('tool:result', (data: any) => {
-        console.log(`[Socket] tool:result from ${socket.id}:`, data.executionId, data.stepId, data.status);
-        if (socket.handshake.auth.role === 'browser') orchestrator.handleToolResult(user.id, data);
+        if (browser && data && typeof data.executionId==='string' && typeof data.stepId==='string')
+            orchestrator.handleToolResult(user.id,socket.id,data);
     });
 
     socket.on(EVENTS_CLIENT.WORKFLOW_START, async (data: WorkflowStartPayload) => {
@@ -257,7 +267,7 @@ RULES:
                     clearTimeout(timeoutHandle);
                     return; // DONE - direct execution complete
                 } catch (error) {
-                    console.error('[ERROR] Simple command execution failed:', error);
+                    console.error('[ERROR] Simple command execution failed');
                     const errorMessage = `❌ Failed: ${(error as Error).message}`;
                     socket.emit('chat:response', { message: errorMessage, sessionId });
                     socket.emit('agent:status', { state: 'error', message: 'Execution failed' });
@@ -289,7 +299,7 @@ RULES:
             // Workflow planning
             socket.emit('agent:status', { state: 'planning', message: 'Designing workflow...' });
 
-            const workflowIntent = quickClassification.workflowIntent || data.intent;
+            const workflowIntent = data.intent;
             const workflow = await orchestrator.plan(workflowIntent, user, sessionId, data.modelConfig, data.context?.form, Array.isArray(data.context?.attachments) ? data.context.attachments.filter((a:unknown)=>typeof a==='string').slice(0,10) : undefined);
 
             if (expired) return;
@@ -344,12 +354,11 @@ RULES:
             };
 
             // Store workflow for resume capability
-            (execution as any)._workflow = workflow;
 
             // Execute with approval required based on AI planning
             if (expired) return;
             orchestrator.execute(execution, workflow, workflow.definition.requiresApproval, data.modelConfig).catch(err => {
-                console.error('Execution error:', err);
+                console.error('Execution error');
                 socket.emit('agent:status', { state: 'error', message: 'Execution failed' });
             });
 
@@ -361,8 +370,11 @@ RULES:
         }
     });
 
-    socket.on(EVENTS_CLIENT.WORKFLOW_CANCEL,async ({executionId})=>{
-        try {await orchestrator.cancel(executionId,user.id);}
+    socket.on(EVENTS_CLIENT.WORKFLOW_CANCEL,async (data)=>{
+        try {
+            if (typeof data?.executionId !== 'string') throw new Error('Invalid execution');
+            await orchestrator.cancel(data.executionId,user.id);
+        }
         catch {socket.emit(EVENTS_SERVER.WORKFLOW_ERROR,{error:'No cancellable workflow'});}
     });
     socket.on(EVENTS_CLIENT.WORKFLOW_RESUME, async (data: WorkflowResumePayload) => {
@@ -409,7 +421,7 @@ app.get('/api/history', authMiddleware, async (c) => {
             } else {
                 // Fallback fetch
                 const wf = await db.query.workflows.findFirst({
-                    where: eq(workflows.id, exec.workflowId as any)
+                    where: and(eq(workflows.id, exec.workflowId as any),eq(workflows.userId,user.id))
                 });
                 if (wf) {
                     workflowName = wf.intent;
@@ -427,7 +439,7 @@ app.get('/api/history', authMiddleware, async (c) => {
         }));
         return c.json(history);
     } catch (error) {
-        console.error('History fetch error:', error);
+        console.error('History fetch error');
         return c.json({ error: 'Internal Server Error' }, 500);
     }
 });
@@ -439,7 +451,7 @@ app.get('/api/chat/sessions', authMiddleware, async (c) => {
         const sessions = await chatService.getSessions(userId);
         return c.json(sessions);
     } catch (error) {
-        console.error('Chat sessions fetch error:', error);
+        console.error('Chat sessions fetch error');
         return c.json({ error: 'Internal Server Error' }, 500);
     }
 });
@@ -454,7 +466,7 @@ app.get('/api/chat/sessions/:sessionId', authMiddleware, async (c) => {
         const messages = await chatService.getMessages(sessionId);
         return c.json(messages);
     } catch (error) {
-        console.error('Chat messages fetch error:', error);
+        console.error('Chat messages fetch error');
         return c.json({ error: 'Internal Server Error' }, 500);
     }
 });
@@ -466,7 +478,7 @@ app.post('/api/chat/sessions', authMiddleware, async (c) => {
         const session = await chatService.createSession(userId);
         return c.json(session);
     } catch (error) {
-        console.error('Create chat session error:', error);
+        console.error('Create chat session error');
         return c.json({ error: 'Internal Server Error' }, 500);
     }
 });

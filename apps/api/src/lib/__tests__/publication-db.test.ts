@@ -17,8 +17,10 @@ it(
         const owner = randomUUID(),
             originalFetch = globalThis.fetch;
         const member = 'fixture-person';
-        const due = async (id: string) =>
-            pool.query("UPDATE scheduled_jobs SET due_at=now()-interval '1 second' WHERE id=$1", [id]);
+        const due = async (id: string) => {
+            await pool.query("UPDATE scheduled_jobs SET status='running' WHERE id=$1", [id]);
+            await pool.query("UPDATE scheduled_jobs SET status='pending',due_at=now()-interval '1 second' WHERE id=$1", [id]);
+        };
         const state = async (id: string) =>
             (await pool.query('SELECT status FROM scheduled_jobs WHERE id=$1', [id])).rows[0].status;
         let attempts = 0,

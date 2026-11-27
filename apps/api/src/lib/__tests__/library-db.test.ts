@@ -15,8 +15,7 @@ it(
         const owner = randomUUID(),
             other = randomUUID();
         try {
-            await runMigrations();
-            await runMigrations();
+            await Promise.all([runMigrations(), runMigrations()]);
             for (const id of [owner, other])
                 await pool.query('INSERT INTO users(id,email) VALUES($1,$2)', [id, id + '@example.test']);
             const headers = async (id: string) => ({
@@ -58,6 +57,15 @@ it(
                     .status,
                 200
             );
+            const profile = await router.request('/'+doc.id+'/profile',{method:'PUT',
+                headers:{...(await headers(owner)), 'Content-Type':'application/json'},
+                body:JSON.stringify({tags:'fixture',profile:{Name:'Synthetic Candidate'}})});
+            assert.equal(profile.status,200);
+            assert.equal((await router.request('/'+doc.id+'/retry',{method:'POST',headers:await headers(owner)})).status,200);
+            const searchFacts = async () => (await router.request('/search?q=Synthetic',{headers:await headers(owner)})).text();
+            assert.match(await searchFacts(), /Synthetic Candidate/);
+            const vector = '['+Array(1536).fill(0.1).join(',')+']';
+            assert.equal((await pool.query('UPDATE document_chunks SET embedding=$2::vector WHERE document_id=$1',[doc.id,vector])).rowCount,1);
             assert.equal(
                 (await router.request('/' + doc.id, { method: 'DELETE', headers: await headers(other) })).status,
                 404
@@ -66,6 +74,9 @@ it(
                 (await router.request('/' + doc.id, { method: 'DELETE', headers: await headers(owner) })).status,
                 200
             );
+            assert.equal(await searchFacts(),'[]');
+            assert.equal((await router.request(original,{headers:await headers(owner)})).status,404);
+            assert.equal((await pool.query('SELECT original,metadata FROM documents WHERE id=$1',[doc.id])).rowCount,0);
             assert.equal(
                 (await pool.query('SELECT 1 FROM document_chunks WHERE document_id=$1', [doc.id])).rowCount,
                 0

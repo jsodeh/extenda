@@ -61,12 +61,15 @@ export async function publishPost(post: Post, token: string, request: typeof fet
             visibility: { 'com.linkedin.ugc.MemberNetworkVisibility': post.visibility }
         })
     });
-    if (!response.ok)
+    if (!response.ok) {
+        const retry = response.headers.get('retry-after') || '';
+        const seconds = /^\d+$/.test(retry) ? Number(retry) : Math.ceil((Date.parse(retry) - Date.now()) / 1000);
         throw new ProviderFailure(
             'LinkedIn rejected publication (' + response.status + '). Open the draft for manual publishing.',
             response.status,
-            Number(response.headers.get('retry-after')) || 60
+            Number.isSafeInteger(seconds) && seconds > 0 ? seconds : 60
         );
+    }
     const id = response.headers.get('x-restli-id');
     if (response.status !== 201 || !id || !/^urn:li:(share|ugcPost):\d+$/.test(id))
         throw new Error('Publication outcome unknown. Check LinkedIn.');

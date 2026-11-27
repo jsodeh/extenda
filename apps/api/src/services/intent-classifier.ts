@@ -166,7 +166,7 @@ Return ONLY valid JSON, no markdown.`;
                 workflowIntent: result.workflowIntent
             };
         } catch (error) {
-            console.error('Intent classification failed:', error);
+            console.error('Intent classification failed');
             // Default to conversational to prevent accidental workflow execution on error
             return {
                 type: 'conversational',

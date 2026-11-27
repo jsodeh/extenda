@@ -42,7 +42,7 @@ export class KnowledgeBaseService {
         const { rows } = replace
             ? await pool.query(
                   `UPDATE documents SET name=$2,file_type=$3,file_size=$4,original=$5,checksum=$6,
-                metadata=$7,status='processing',updated_at=now() WHERE user_id=$1 AND id=$8 AND ($9::text IS NULL OR metadata->>'generation'=$9) RETURNING id`,
+                metadata=(CASE WHEN $9::text IS NULL THEN '{}'::jsonb ELSE metadata - 'error' END) || $7::jsonb,status='processing',updated_at=now() WHERE user_id=$1 AND id=$8 AND ($9::text IS NULL OR metadata->>'generation'=$9) RETURNING id`,
                   [...args, replace, previous || null]
               )
             : await pool.query(

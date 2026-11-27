@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -10,6 +10,17 @@ export interface ModelConfig {
     mode?: string; // 'Fast', 'Planning'
 }
 
+
+function ollamaOrigin(baseURL?: string) {
+    const endpoint = new URL(baseURL || 'http://localhost:11434');
+    const allowed = (process.env.OLLAMA_ALLOWED_ORIGINS || '').split(',').map(origin=>origin.trim());
+    const local = process.env.NODE_ENV !== 'production' && ['localhost','127.0.0.1','[::1]'].includes(endpoint.hostname);
+    if ((!local && !allowed.includes(endpoint.origin)) || !['https:','http:'].includes(endpoint.protocol)
+        || endpoint.username || endpoint.password || endpoint.pathname !== '/' || endpoint.search || endpoint.hash)
+        throw new Error('Configure OLLAMA_ALLOWED_ORIGINS for this model server');
+    return endpoint.origin;
+}
+
 export const generateText = async (prompt: string, config?: ModelConfig): Promise<string> => {
     if (!config || (config.provider !== 'ollama' && !config.apiKey)) {
         throw new Error('API Key Missing from Client: Please configure your AI Provider credentials in Extenda Settings.');
@@ -19,12 +30,13 @@ export const generateText = async (prompt: string, config?: ModelConfig): Promis
         config.provider = 'google';
     }
 
+    let timer: NodeJS.Timeout | undefined;
     try {
         console.log(`[AI Router] Sending request to ${config.provider} (${config.model || 'default'}). Mode: ${config.mode}`);
 
         // Add timeout to prevent hanging (60s for complex planning)
         const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`${config.provider} API timeout`)), 60000)
+            timer = setTimeout(() => reject(new Error(`${config.provider} API timeout`)), 60000)
         );
 
         let resultText = '';
@@ -33,12 +45,6 @@ export const generateText = async (prompt: string, config?: ModelConfig): Promis
             const genAI = new GoogleGenerativeAI(config.apiKey);
             const model = genAI.getGenerativeModel({
                 model: config.model || 'gemini-flash-latest',
-                safetySettings: [
-                    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-                    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                ],
             });
 
             const result: any = await Promise.race([
@@ -74,13 +80,7 @@ export const generateText = async (prompt: string, config?: ModelConfig): Promis
             resultText = result.content[0].type === 'text' ? result.content[0].text : '';
 
         } else if (config.provider === 'ollama') {
-            const endpoint = new URL(config.baseURL || 'http://localhost:11434');
-            const allowed = (process.env.OLLAMA_ALLOWED_ORIGINS || '').split(',').map(origin=>origin.trim());
-            const local = process.env.NODE_ENV !== 'production' && ['localhost','127.0.0.1','[::1]'].includes(endpoint.hostname);
-            if ((!local && !allowed.includes(endpoint.origin)) || !['https:','http:'].includes(endpoint.protocol)
-                || endpoint.username || endpoint.password || endpoint.pathname !== '/' || endpoint.search || endpoint.hash)
-                throw new Error('Configure OLLAMA_ALLOWED_ORIGINS for this model server');
-            const baseUrl = endpoint.origin;
+            const baseUrl = ollamaOrigin(config.baseURL);
             const result: any = await Promise.race([
                 fetch(`${baseUrl}/api/chat`, {
                     redirect:'error',signal:AbortSignal.timeout(60000),
@@ -122,14 +122,18 @@ export const generateText = async (prompt: string, config?: ModelConfig): Promis
 
         return resultText;
     } catch (error: any) {
-        console.error(`[AI Router] Request failed (${config.provider})`);
+        const status = Number(error?.status);
+        console.error('[AI Router] Request failed', Number.isInteger(status) ? status : 'transport or configuration');
         
         if (error.message?.includes('model output must contain') || error.message?.includes('safety')) {
             console.error('[AI Router] Safety filters may have blocked the response');
-            return "I'm ready to help! What would you like me to do?";
+            throw new Error('The model could not complete this request.');
         }
         
-        throw error;
+        if (config.provider === 'ollama' && /^(Local Ollama Unreachable|Ollama Connectivity|Configure OLLAMA_ALLOWED_ORIGINS)/.test(error.message)) throw error;
+        throw new Error(Number.isInteger(status) ? 'Model provider returned HTTP ' + status : 'Model request failed. Check the connection and selected model.');
+    } finally {
+        clearTimeout(timer);
     }
 };
 
@@ -153,8 +157,9 @@ export const embedContent = async (text: string, config?: ModelConfig): Promise<
         });
         return result.data[0].embedding;
     } else if (config.provider === 'ollama') {
-        const baseUrl = config.baseURL || 'http://localhost:11434';
+        const baseUrl = ollamaOrigin(config.baseURL);
         const response = await fetch(`${baseUrl}/api/embeddings`, {
+            redirect:'error', signal:AbortSignal.timeout(60000),
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -162,6 +167,7 @@ export const embedContent = async (text: string, config?: ModelConfig): Promise<
                 prompt: text
             })
         });
+        if (!response.ok) throw new Error('Embedding provider returned HTTP '+response.status);
         const result: any = await response.json();
         return result.embedding;
     } else {

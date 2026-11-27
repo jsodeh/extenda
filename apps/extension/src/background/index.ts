@@ -46,7 +46,9 @@ async function executeContentScriptTool(tool: string, params: any): Promise<any>
         throw new Error('Cannot execute tools on browser-restricted pages.');
     }
 
+    if (params.file !== undefined) throw new Error('Select an original from the library or choose it manually');
     if (params.action === 'attach') {
+        if (tool !== 'FormFiller') throw new Error('File attachment requires a reviewed form action');
         if (!Number.isSafeInteger(params.documentId)) throw new Error('Select a library document or choose a file manually');
         const response=await privateRequest('/api/knowledge/'+params.documentId+'/download');
         const bytes=new Uint8Array(await response.arrayBuffer());
@@ -268,6 +270,9 @@ if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'EXECUTE_TOOL') {
+        if (sender.id!==chrome.runtime.id || sender.url?.split(/[?#]/)[0]!==chrome.runtime.getURL('src/sidepanel/index.html')) {
+            sendResponse({error:'Open the Extenda side panel to use this action'});return false;
+        }
         const { tool, params } = message;
         (async () => {
             try {

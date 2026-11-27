@@ -2,10 +2,13 @@ name: Workspace checks
 on: [push, pull_request]
 jobs:
   check:
+    strategy:
+      matrix:
+        postgres: [15, 18]
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: pgvector/pgvector:pg15
+        image: pgvector/pgvector:pg${{ matrix.postgres }}
         env:
           POSTGRES_PASSWORD: fixture
         ports: ['5432:5432']

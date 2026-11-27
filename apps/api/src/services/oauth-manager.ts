@@ -90,7 +90,9 @@ export class OAuthManager {
             ON CONFLICT (user_id, provider) 
             DO UPDATE SET
                 encrypted_access_token = EXCLUDED.encrypted_access_token,
-                encrypted_refresh_token = COALESCE(EXCLUDED.encrypted_refresh_token, oauth_credentials.encrypted_refresh_token),
+                encrypted_refresh_token = COALESCE(EXCLUDED.encrypted_refresh_token, CASE
+                    WHEN EXCLUDED.metadata->>'sub' IS NOT DISTINCT FROM oauth_credentials.metadata->>'sub'
+                    THEN oauth_credentials.encrypted_refresh_token END),
                 expires_at = EXCLUDED.expires_at,
                 scope = EXCLUDED.scope,
                 metadata = EXCLUDED.metadata,

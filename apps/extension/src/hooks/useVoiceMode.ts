@@ -118,7 +118,6 @@ export function useVoiceMode(options: UseVoiceModeOptions): UseVoiceModeReturn {
                 context: {
                     accessToken: options.accessToken || undefined,
                     sessionId: options.sessionId || undefined,
-                    apiUrl: import.meta.env.VITE_API_URL || 'https://extenda-pxa6.onrender.com'
                 },
                 onStatusChange: handleStatusChange,
                 onTranscript: (text, role) => {
@@ -139,7 +138,7 @@ export function useVoiceMode(options: UseVoiceModeOptions): UseVoiceModeReturn {
                     chrome.runtime.sendMessage({ type: 'QUEUE_AUDIO', data: base64 });
                 },
                 onToolCall: (name, args) => {
-                    console.log('[VoiceMode] Tool call:', name, args);
+                    console.log('[VoiceMode] Tool call:', name);
                     // Notify server about tool execution
                     if (options.sessionId) {
                         wsClient.emit('voice:tool_call', {
@@ -149,8 +148,8 @@ export function useVoiceMode(options: UseVoiceModeOptions): UseVoiceModeReturn {
                         });
                     }
                 },
-                onToolResult: (name, result) => {
-                    console.log('[VoiceMode] Tool result:', name, result);
+                onToolResult: (name) => {
+                    console.log('[VoiceMode] Tool result received:', name);
                 },
                 onError: options.onError
             });

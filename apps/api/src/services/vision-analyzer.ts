@@ -91,8 +91,7 @@ If the element cannot be found, respond with:
         };
 
     } catch (error) {
-        console.error('[VisionAnalyzer] Identification failed');
-        return null;
+        throw new Error('Vision provider could not identify the element');
     }
 }
 
@@ -142,7 +141,6 @@ Focus on the most prominent interactive elements. Limit to 10 elements maximum.`
         return JSON.parse(jsonMatch[0]);
 
     } catch (error) {
-        console.error('[VisionAnalyzer] Page analysis failed');
-        return [];
+        throw new Error('Vision provider could not analyze the screenshot');
     }
 }

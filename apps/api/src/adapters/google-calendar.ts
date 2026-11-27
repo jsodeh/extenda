@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { validTimezone, timeRange } from '../lib/scheduling.js';
+import { validTimezone, timeRange, calendarSlots } from '../lib/scheduling.js';
 import { google } from 'googleapis';
 import { BaseAdapter } from './base-adapter.js';
 import { AdapterAction } from '@extenda/shared';
@@ -7,7 +7,7 @@ import { AdapterAction } from '@extenda/shared';
 const scheduleFields = {
     timezone: { type: 'string', description: 'IANA timezone' },
     calendarId: { type: 'string', description: 'Defaults to primary' },
-    recurrence: { type: 'array', items: { type: 'string' }, description: 'Google Calendar RRULE lines' },
+    recurrence: { type: 'array', items: { type: 'string' }, description: 'Finite DAILY or WEEKLY RRULE with COUNT and optional INTERVAL, within one year' },
     reminderMinutes: { type: 'number', description: 'Popup minutes before event' }
 };
 const ACTIONS: AdapterAction[] = [
@@ -169,13 +169,18 @@ export class GoogleCalendarAdapter extends BaseAdapter {
         const calendarId = params.calendarId || 'primary';
         const timeZone = validTimezone(params.timezone || 'UTC');
         const busy = async () => {
-            const range = timeRange(params.start, params.end);
+            const slots = calendarSlots(params.start, params.end, timeZone, params.recurrence);
+            const range = { timeMin: slots[0].timeMin, timeMax: slots[slots.length - 1].timeMax };
             const response = await calendar.freebusy.query({
                 requestBody: { ...range, timeZone, items: [{ id: calendarId }] }
             });
             const result = response.data.calendars?.[calendarId];
             if (!result || result.errors?.length) throw new Error('Availability could not be verified');
-            return result.busy || [];
+            if (!Array.isArray(result.busy)) throw new Error('Availability could not be verified');
+            return result.busy.filter(block => {
+                const interval = timeRange(block.start, block.end);
+                return slots.some(slot => interval.timeMin < slot.timeMax && interval.timeMax > slot.timeMin);
+            });
         };
         const reminders =
             params.reminderMinutes === undefined
@@ -204,6 +209,7 @@ export class GoogleCalendarAdapter extends BaseAdapter {
                     requestBody: event,
                     sendUpdates: 'all' // Send invite emails to attendees
                 });
+                if (!result.data.id) throw new Error('Calendar receipt missing. Check the calendar before retrying.');
                 return {
                     eventId: result.data.id,
                     htmlLink: result.data.htmlLink,
@@ -236,8 +242,10 @@ export class GoogleCalendarAdapter extends BaseAdapter {
                 return { success: true, message: `Event ${params.eventId} deleted` };
 
             case 'update_event':
+                if (params.recurrence) throw new Error('Review changes to the series in Google Calendar');
                 if (params.start || params.end) {
                     const current = await calendar.events.get({ calendarId, eventId: params.eventId });
+                    if (current.data.recurrence?.length) throw new Error('Review changes to the series in Google Calendar');
                     const range = timeRange(
                         params.start || current.data.start?.dateTime,
                         params.end || current.data.end?.dateTime

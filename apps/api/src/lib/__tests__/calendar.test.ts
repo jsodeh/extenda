@@ -11,8 +11,9 @@ it('passes the reviewed calendar, times, recurrence, invitations and reminder to
         calendars: { get: async () => ({ data: { id: 'work' } }) },
         freebusy: {
             query: async ({ requestBody }: any) => {
+                assert.equal(requestBody.timeMax, '2030-01-14T10:00:00.000Z');
                 assert.deepEqual(requestBody.items, [{ id: 'work' }]);
-                return { data: { calendars: { work: { busy: conflict ? [{}] : [] } } } };
+                return { data: { calendars: { work: { busy: conflict ? [{start:'2030-01-14T08:30:00Z',end:'2030-01-14T09:00:00Z'}] : [{start:'2030-01-08T08:00:00Z',end:'2030-01-08T10:00:00Z'}] } } } };
             }
         },
         events: {

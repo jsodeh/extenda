@@ -16,6 +16,23 @@ export interface DOMReaderResult {
     error?: string;
 }
 
+export function visible(element: HTMLElement) {
+    if (element.closest('[hidden],[aria-hidden=true],[inert]')) return false;
+    for (let node: HTMLElement | null = element; node; node = node.parentElement) {
+        const style = getComputedStyle(node);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+    }
+    return true;
+}
+
+export function choiceList(control: HTMLElement) {
+    const list = control.getAttribute('role') === 'listbox' ? control :
+        document.getElementById(control.getAttribute('aria-controls') || '');
+    if (list?.getAttribute('role') !== 'listbox') return [];
+    return Array.from(list.querySelectorAll<HTMLElement>('[role=option]'))
+        .filter(option => option.closest('[role=listbox]') === list && option.getAttribute('aria-disabled') !== 'true');
+}
+
 export class DOMReader {
     /**
      * Extract all text content from page or specific selector
@@ -125,16 +142,16 @@ export class DOMReader {
 
             switch (params.action) {
                 case 'inspect_form':
-                    data = Array.from(document.querySelectorAll<HTMLElement>('form,input:not([type=hidden]),select,textarea,button,[contenteditable=true],[role=alert]')).filter(el=>!el.closest('[hidden],[aria-hidden=true]') && getComputedStyle(el).display!=='none').slice(0,150).map(el => {
+                    data = Array.from(document.querySelectorAll<HTMLElement>('form,input:not([type=hidden]),select,textarea,button,[contenteditable=true],[role=alert],[role=combobox],[role=listbox]')).filter(visible).slice(0,150).map(el => {
                         const control = el as HTMLInputElement;
                         const labelIds = (el.getAttribute('aria-labelledby') || '').split(/\s+/);
                         return {
-                            selector: this.getSelector(el), type: control.type || el.tagName.toLowerCase(),
+                            selector: this.getSelector(el), type: el.getAttribute('role') || control.type || el.tagName.toLowerCase(),
                             label: el.getAttribute('aria-label') || labelIds.map(id=>document.getElementById(id)?.textContent).filter(Boolean).join(' ') ||
-                                control.labels?.[0]?.textContent || control.placeholder || control.name || (el.matches('button,[role=alert]') ? el.textContent : ''),
+                                control.labels?.[0]?.textContent || control.placeholder || (control.type === 'button' ? control.value : control.name) || (el.matches('button,[role=alert]') ? el.textContent : ''),
                             required: control.required || el.getAttribute('aria-required') === 'true',
                             validation: control.validationMessage, choice: ['checkbox','radio'].includes(control.type) ? control.value : undefined,
-                            options: el instanceof HTMLSelectElement ? Array.from(el.options).map(o=>({label:o.text,value:o.value})) : undefined
+                            options: el instanceof HTMLSelectElement ? Array.from(el.options).map(o=>({label:o.text,value:o.value})) : choiceList(el).map(o => ({label:o.textContent?.trim(),value:o.textContent?.trim()}))
                         };
                     });
                     break;
