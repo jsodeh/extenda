@@ -1,16 +1,33 @@
-import axios from 'axios';
+import { oauthManager } from '../services/oauth-manager.js';
+import { linkedAccount, queuePost, saveDraft, drafts } from '../services/linkedin.js';
+import { executeDueJobs } from '../services/scheduler.js';
+import { pool } from '../db/index.js';
 import { BaseAdapter } from './base-adapter.js';
 import { AdapterAction } from '@extenda/shared';
 
 const ACTIONS: AdapterAction[] = [
+    {
+        id: 'save_draft',
+        name: 'save_draft',
+        description:
+            'Save an editable private draft. Ground posts in relevant evidence. Respect requested tone and avoid confidential details.',
+        parameters: {
+            type: 'object',
+            required: ['text'],
+            properties: { text: { type: 'string' }, visibility: { type: 'string' }, link: { type: 'string' } }
+        }
+    },
     {
         id: 'create_post',
         name: 'create_post',
         description: 'Create a post on LinkedIn',
         parameters: {
             type: 'object',
-            required: ['text'],
+            required: [],
             properties: {
+                draftId: { type: 'string', description: 'Saved draft ID, or supply text' },
+                at: { type: 'string', description: 'Optional approved publication time with offset' },
+                timezone: { type: 'string' },
                 text: { type: 'string', description: 'Post text content' },
                 link: { type: 'string', description: 'Optional link to include' },
                 visibility: {
@@ -62,109 +79,57 @@ export class LinkedInAdapter extends BaseAdapter {
     name = 'LinkedInAdapter';
     description = 'Post content and manage LinkedIn profile';
     version = '1.0.0';
-    scopes = [
-        'openid',
-        'profile',
-        'email',
-        'w_member_social'
-    ];
+    scopes = ['openid', 'profile', 'email', 'w_member_social'];
     actions = ACTIONS;
 
-    async execute(actionName: string, params: any, context: any): Promise<any> {
-        const accessToken = context.tokens?.access_token;
-
-        if (!accessToken) {
-            throw new Error('LinkedIn access token not found');
+    async execute(action: string, params: any, context: any) {
+        const owner = context.userId;
+        if (!owner) throw new Error('An authenticated member is required');
+        if (action === 'save_draft')
+            return saveDraft(owner, { ...params, visibility: params.visibility || 'PUBLIC' });
+        if (action === 'list_posts') return await drafts(owner);
+        if (action === 'get_profile') {
+            const account = await linkedAccount(owner);
+            if (!account) throw new Error('Reconnect LinkedIn');
+            const res = await fetch('https://api.linkedin.com/v2/userinfo', {
+                headers: { Authorization: 'Bearer ' + account.token }
+            });
+            if (!res.ok) throw new Error('LinkedIn profile unavailable');
+            return res.json();
         }
-
-        const api = axios.create({
-            baseURL: 'https://api.linkedin.com/v2',
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json',
-                'X-Restli-Protocol-Version': '2.0.0'
+        if (action === 'create_post') {
+            if (!params.author) {
+                const draft = params.draftId ? { draftId: params.draftId } : await saveDraft(owner, params);
+                throw new Error(
+                    'Publishing permission unavailable. Copy draft ' +
+                        draft.draftId +
+                        ' from LinkedIn in Integrations.'
+                );
             }
-        });
-
-        switch (actionName) {
-            case 'create_post':
-                // First, get the user's LinkedIn ID
-                const meResponse = await api.get('/me');
-                const authorId = `urn:li:person:${meResponse.data.id}`;
-
-                // Prepare post data
-                const postData: any = {
-                    author: authorId,
-                    lifecycleState: 'PUBLISHED',
-                    specificContent: {
-                        'com.linkedin.ugc.ShareContent': {
-                            shareCommentary: {
-                                text: params.text
-                            },
-                            shareMediaCategory: params.link ? 'ARTICLE' : 'NONE'
-                        }
-                    },
-                    visibility: {
-                        'com.linkedin.ugc.MemberNetworkVisibility': params.visibility || 'PUBLIC'
-                    }
-                };
-
-                // Add link if provided
-                if (params.link) {
-                    postData.specificContent['com.linkedin.ugc.ShareContent'].media = [{
-                        status: 'READY',
-                        originalUrl: params.link
-                    }];
-                }
-
-                const postResponse = await api.post('/ugcPosts', postData);
-                const postId = postResponse.data.id;
-
-                // Extract post URN for URL construction
-                const postUrn = postId.split(':').pop();
-
-                return {
-                    success: true,
-                    postId: postId,
-                    postUrl: `https://www.linkedin.com/feed/update/${postId}/`,
-                    message: 'Post created successfully on LinkedIn'
-                };
-
-            case 'get_profile':
-                const profileResponse = await api.get('/me', {
-                    params: {
-                        projection: '(id,localizedFirstName,localizedLastName,profilePicture(displayImage~:playableStreams))'
-                    }
-                });
-
-                const profile = profileResponse.data;
-
-                return {
-                    id: profile.id,
-                    firstName: profile.localizedFirstName,
-                    lastName: profile.localizedLastName,
-                    fullName: `${profile.localizedFirstName} ${profile.localizedLastName}`,
-                    profileUrl: `https://www.linkedin.com/in/${profile.id}`
-                };
-
-            case 'delete_post':
-                await api.delete(`/ugcPosts/${params.postId}`);
-                return { success: true, message: `Post ${params.postId} deleted` };
-
-            case 'list_posts':
-                const meRes = await api.get('/me');
-                const myUrn = `urn:li:person:${meRes.data.id}`;
-                const postsRes = await api.get('/ugcPosts', {
-                    params: {
-                        q: 'authors',
-                        authors: `List(${myUrn})`,
-                        count: params.count || 10
-                    }
-                });
-                return postsRes.data.elements;
-
-            default:
-                throw new Error(`Action ${actionName} not supported`);
+            const job = await queuePost(owner, params, context.idempotencyKey, context.approval);
+            if (params.at) return { scheduled: true, at: job.due_at, jobId: job.id };
+            await executeDueJobs(1, String(job.id));
+            const {
+                rows: [receipt]
+            } = await pool.query('SELECT status,result FROM scheduled_jobs WHERE id=$1 AND user_id=$2', [
+                job.id,
+                owner
+            ]);
+            if (receipt.status !== 'completed')
+                throw new Error(receipt.result?.message || 'Publication pending. Check scheduled tasks.');
+            return receipt.result;
         }
+        if (action === 'delete_post') {
+            if (!context.approval) throw new Error('Review LinkedIn deletion');
+            return oauthManager.withGrant(owner,'linkedin',params.accountBinding, async grant => {
+                const res = await fetch('https://api.linkedin.com/v2/ugcPosts/' + encodeURIComponent(params.postId), {
+                    method:'DELETE', headers:{ Authorization:'Bearer '+grant.accessToken, 'X-Restli-Protocol-Version':'2.0.0' },
+                    signal:AbortSignal.timeout(20000)
+                });
+                if (!res.ok) throw new Error('LinkedIn rejected deletion');
+                return {deleted:params.postId};
+            });
+        }
+        throw new Error('Unknown LinkedIn action');
     }
 }

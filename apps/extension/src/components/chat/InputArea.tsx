@@ -8,7 +8,7 @@ import { ModeSelectDropdown, ExecutionMode } from './ModeSelectDropdown';
 import { ModelConfig } from '@extenda/shared';
 
 interface InputAreaProps {
-    onSend: (message: string, files?: File[], modelConfig?: ModelConfig) => void;
+    onSend: (message: string, files?: File[], modelConfig?: ModelConfig, save?: boolean) => void;
     disabled?: boolean;
     sessionId?: string | null;
     accessToken?: string | null;
@@ -34,6 +34,7 @@ const getFileExtension = (filename: string) => {
 
 
 export function InputArea({ onSend, disabled, sessionId, accessToken, onTranscript, initialValue }: InputAreaProps) {
+    const [save,setSave] = useState(false);
     const [input, setInput] = useState('');
 
     useEffect(() => {
@@ -60,7 +61,7 @@ export function InputArea({ onSend, disabled, sessionId, accessToken, onTranscri
 
     // BYOK State
     const [activeProvider, setActiveProvider] = useState<Provider>('google');
-    const [activeModel, setActiveModel] = useState<string>('gemini-2.0-flash');
+    const [activeModel, setActiveModel] = useState<string>('gemini-flash-latest');
     const [mode, setMode] = useState<ExecutionMode>('Fast');
     const [providerKeys, setProviderKeys] = useState<{ google: string, openai: string, anthropic: string, ollama: string }>({ google: '', openai: '', anthropic: '', ollama: '' });
     const [defaultModels, setDefaultModels] = useState<Record<string, string>>({});
@@ -82,7 +83,7 @@ export function InputArea({ onSend, disabled, sessionId, accessToken, onTranscri
                 
                 if (result.extenda_default_models) {
                     setDefaultModels(result.extenda_default_models);
-                    setActiveModel(result.extenda_default_models[provider] || 'gemini-2.0-flash');
+                    setActiveModel(result.extenda_default_models[provider] || 'gemini-flash-latest');
                 }
                 
                 if (result.extenda_ollama_url) setOllamaUrl(result.extenda_ollama_url);
@@ -142,7 +143,8 @@ export function InputArea({ onSend, disabled, sessionId, accessToken, onTranscri
             mode: mode
         };
 
-        onSend(input, selectedFiles.length > 0 ? selectedFiles : undefined, modelConfig);
+        onSend(input, selectedFiles.length > 0 ? selectedFiles : undefined, modelConfig, save);
+        setSave(false);
 
         setInput('');
         setSelectedFiles([]);
@@ -273,6 +275,7 @@ export function InputArea({ onSend, disabled, sessionId, accessToken, onTranscri
                         </div>
                     )}
 
+                    {selectedFiles.length > 0 && <label className="text-xs"><input type="checkbox" checked={save} onChange={e=>setSave(e.target.checked)} /> Save attachment originals in Knowledgebase</label>}
                     {/* Hidden file input - supports multiple files */}
                     <input
                         type="file"

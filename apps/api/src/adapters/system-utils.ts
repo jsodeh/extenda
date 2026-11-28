@@ -16,6 +16,7 @@ export class SystemUtilsAdapter extends BaseAdapter {
     actions = ACTIONS;
 
     async execute(actionName: string, params: any, context: any): Promise<any> {
-        return { success: true, message: `Action ${actionName} routed to system tools.` };
+        if (actionName==='Check Time') return {timestamp:new Date().toISOString()};
+        throw new Error('This action requires a connected browser');
     }
 }

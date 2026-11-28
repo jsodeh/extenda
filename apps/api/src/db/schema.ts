@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, boolean, jsonb, integer, customType } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, boolean, jsonb, integer, serial, customType, primaryKey, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 const pgVector = customType<{ data: number[]; config: { dimensions: number } }>({
@@ -9,7 +9,7 @@ const pgVector = customType<{ data: number[]; config: { dimensions: number } }>(
         return JSON.stringify(value);
     },
     fromDriver(value: unknown) {
-        return value as number[];
+        return typeof value==='string' ? JSON.parse(value) : value as number[];
     },
 });
 
@@ -93,14 +93,31 @@ export const auditLogs = pgTable('audit_logs', {
 });
 
 export const documents = pgTable('documents', {
-    id: uuid('id').defaultRandom().primaryKey(),
-    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
-    filename: text('filename').notNull(),
-    content: text('content').notNull(),
-    embedding: pgVector('embedding', { dimensions: 768 }),
+    id: serial('id').primaryKey(),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+    name: varchar('name',{length:255}).notNull(),
+    filePath: text('file_path'),
+    legacyId: uuid('legacy_id').unique(),
+    size: integer('file_size').notNull(),
+    fileType: text('file_type').notNull(),
+    original: customType<{data: Buffer}>({ dataType: () => 'bytea' })('original'),
+    checksum: text('checksum'),
+    status: text('status').default('processing'),
+    chunksCount: integer('chunks_count').default(0),
     metadata: jsonb('metadata').default({}),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+export const documentChunks = pgTable('document_chunks', {
+    id: serial('id').primaryKey(),
+    documentId: integer('document_id').references(() => documents.id, {onDelete: 'cascade'}).notNull(),
+    chunkIndex: integer('chunk_index').notNull(),
+    content: text('content').notNull(),
+    embedding: pgVector('embedding', { dimensions: 1536 }),
+    createdAt: timestamp('created_at').defaultNow(),
+    embeddingModel: text('embedding_model'),
+    metadata: jsonb('metadata').default({}),
 });
 
 export const chatSessions = pgTable('chat_sessions', {
@@ -145,3 +162,52 @@ export const oauthCredentials = pgTable('oauth_credentials', {
 }, (t) => ({
     unq: sql`UNIQUE ("user_id", "provider")`,
 }));
+
+export const scheduledJobs = pgTable('scheduled_jobs', {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id').notNull().references(() => users.id,{onDelete:'cascade'}),
+    action: text('action').notNull(),
+    dueAt: timestamp('due_at',{withTimezone:true}).notNull(),
+    timezone: text('timezone').notNull(),
+    recurrence: text('recurrence').notNull().default('once'),
+    status: text('status').notNull().default('pending'),
+    approvedPayload: jsonb('approved_payload').notNull(),
+    approval: text('approval').notNull(),
+    idempotencyKey: text('idempotency_key').notNull(),
+    attempts: integer('attempts').notNull().default(0),
+    result: jsonb('result'),
+    claimedAt: timestamp('claimed_at',{withTimezone:true}),
+    createdAt: timestamp('created_at',{withTimezone:true}).defaultNow()
+},t=>({byRequest:uniqueIndex('scheduled_jobs_user_id_idempotency_key_key').on(t.userId,t.idempotencyKey)}));
+
+export const personalReminders = pgTable('personal_reminders',{
+    jobId: uuid('job_id').references(()=>scheduledJobs.id,{onDelete:'cascade'}).notNull(),
+    occurrence: timestamp('occurrence',{withTimezone:true}).notNull(),
+    message: text('message').notNull(),
+    delivered: boolean('delivered').notNull().default(false)
+},t=>({pk:primaryKey({columns:[t.jobId,t.occurrence]})}));
+
+export const linkedinDrafts = pgTable('linkedin_drafts',{
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id').references(()=>users.id,{onDelete:'cascade'}).notNull(),
+    content: text('content').notNull(),
+    visibility: text('visibility').notNull(),
+    link: text('link'),
+    version: integer('version').default(1).notNull(),
+    jobId: uuid('job_id').references(()=>scheduledJobs.id,{onDelete:'set null'}),
+    createdAt: timestamp('created_at',{withTimezone:true}).defaultNow(),
+    updatedAt: timestamp('updated_at',{withTimezone:true}).defaultNow()
+});
+
+export const oauthLinkStates = pgTable('oauth_link_states',{
+    nonce: uuid('nonce').primaryKey(),
+    userId: uuid('user_id').references(()=>users.id,{onDelete:'cascade'}).notNull(),
+    provider: text('provider').notNull(),
+    expiresAt: timestamp('expires_at',{withTimezone:true}).default(sql`now()+interval '10 minutes'`).notNull()
+});
+
+export const workflowRequests = pgTable('workflow_requests',{
+    userId: uuid('user_id').references(()=>users.id,{onDelete:'cascade'}).notNull(),
+    requestId: uuid('request_id').notNull(),
+    createdAt: timestamp('created_at',{withTimezone:true}).defaultNow().notNull()
+},t=>({pk:primaryKey({columns:[t.userId,t.requestId]})}));

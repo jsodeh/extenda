@@ -29,7 +29,7 @@ user.get('/export', async (c) => {
 
         return c.json(data);
     } catch (error) {
-        console.error('Data export error:', error);
+        console.error('Data export error');
         return c.json({ error: 'Export failed or unauthorized' }, 500);
     }
 });
@@ -46,14 +46,14 @@ user.delete('/account', async (c) => {
 
         return c.json({ success: true, message: 'Account deleted successfully' });
     } catch (error) {
-        console.error('Account deletion error:', error);
+        console.error('Account deletion error');
         return c.json({ error: 'Deletion failed' }, 500);
     }
 });
 
 // Helper functions (implement these based on your schema)
 async function getUserData(userId: string) {
-    return db.query.users.findFirst({ where: eq(users.id, userId as any) });
+    return db.query.users.findFirst({ columns:{id:true,name:true,email:true,role:true,createdAt:true}, where: eq(users.id, userId as any) });
 }
 
 async function getUserWorkflows(userId: string) { return []; }

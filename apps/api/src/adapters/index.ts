@@ -60,3 +60,6 @@ adapterRegistry.register(new LinkedInAdapter());
 adapterRegistry.register(new BrowserInteractionAdapter());
 adapterRegistry.register(new TabManagementAdapter());
 adapterRegistry.register(new SystemUtilsAdapter());
+
+import { PlanningAdapter } from './planning.js';
+adapterRegistry.register(new PlanningAdapter());

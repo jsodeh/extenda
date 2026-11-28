@@ -80,40 +80,20 @@ export class ChatService {
     async importData(userId: string, data: any) {
         const { sessions, messages, workflows: importedWorkflows } = data;
 
-        // 1. Import Workflows first (dependencies)
-        for (const wf of importedWorkflows) {
-            await db.insert(workflows).values({
-                ...wf,
-                userId: userId as any,
-                updatedAt: new Date()
-            }).onConflictDoUpdate({
-                target: workflows.id,
-                set: { ...wf, updatedAt: new Date() }
-            });
-        }
-
-        // 2. Import Sessions
-        for (const session of sessions) {
-            await db.insert(chatSessions).values({
-                ...session,
-                userId: userId as any,
-                updatedAt: new Date()
-            }).onConflictDoUpdate({
-                target: chatSessions.id,
-                set: { ...session, updatedAt: new Date() }
-            });
-        }
-
-        // 3. Import Messages
-        for (const msg of messages) {
-            await db.insert(chatMessages).values({
-                ...msg,
-            }).onConflictDoUpdate({
-                target: chatMessages.id,
-                set: { ...msg }
-            });
-        }
-
+        await db.transaction(async tx => {
+            for (const workflow of importedWorkflows) {
+                await tx.insert(workflows).values({ ...workflow, userId }).onConflictDoNothing();
+            }
+            for (const session of sessions) {
+                await tx.insert(chatSessions).values({ ...session, userId }).onConflictDoNothing();
+            }
+            const owned = new Set((await tx.select({ id: chatSessions.id }).from(chatSessions)
+                .where(eq(chatSessions.userId, userId))).map(s => s.id));
+            for (const message of messages) {
+                if (!owned.has(message.sessionId)) throw new Error('Session unavailable');
+                await tx.insert(chatMessages).values(message).onConflictDoNothing();
+            }
+        });
         return { success: true, count: sessions.length };
     }
 }

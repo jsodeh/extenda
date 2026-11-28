@@ -32,7 +32,7 @@ preferences.get('/', async (c) => {
 
         return c.json(prefs);
     } catch (error) {
-        console.error('Error fetching preferences:', error);
+        console.error('Error fetching preferences');
         return c.json({ error: 'Failed to fetch preferences' }, 500);
     }
 });
@@ -60,7 +60,7 @@ preferences.put('/', async (c) => {
 
         return c.json({ success: true });
     } catch (error) {
-        console.error('Error updating preferences:', error);
+        console.error('Error updating preferences');
         return c.json({ error: 'Failed to update preferences' }, 500);
     }
 });
@@ -89,7 +89,7 @@ preferences.patch('/', async (c) => {
 
         return c.json({ success: true });
     } catch (error) {
-        console.error('Error patching preferences:', error);
+        console.error('Error patching preferences');
         return c.json({ error: 'Failed to patch preferences' }, 500);
     }
 });
@@ -106,7 +106,7 @@ preferences.get('/status', async (c) => {
         );
         return c.json(manifest);
     } catch (error) {
-        console.error('Error fetching discovery status:', error);
+        console.error('Error fetching discovery status');
         return c.json({ error: 'Failed to fetch discovery status' }, 500);
     }
 });

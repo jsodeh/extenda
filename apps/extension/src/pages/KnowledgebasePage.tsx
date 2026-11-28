@@ -1,11 +1,15 @@
-import { useState } from 'react';
+import { profileFields, type PersonalProfile } from '@extenda/shared';
+import { privateRequest,uploadDocument } from '../lib/api';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, Upload, FileText, Trash2, CheckCircle, AlertCircle } from 'lucide-react';
 
 interface Document {
     id: string;
     name: string;
     size: number;
-    uploadedAt: Date;
+    uploadedAt: string;
+    hasOriginal: boolean;
+    metadata?: { profile?:PersonalProfile; facts?: string; tags?: string; error?: string; semantic?: boolean };
     status: 'processing' | 'ready' | 'failed';
 }
 
@@ -18,37 +22,55 @@ export default function KnowledgebasePage({ onBack }: KnowledgebasePageProps) {
     const [uploading, setUploading] = useState(false);
     const [dragActive, setDragActive] = useState(false);
 
-    const handleFileUpload = async (files: FileList | null) => {
-        if (!files || files.length === 0) return;
-
+    const base = '/api/knowledge';
+    const [error, setError] = useState('');
+    const [query,setQuery] = useState('');
+    const [matches,setMatches] = useState<string[]>([]);
+    const [progress,setProgress] = useState('');
+    const [ocr,setOcr]=useState(false);
+    const [semantic,setSemantic] = useState(false);
+    const [preview,setPreview] = useState('');
+    const [editing,setEditing] = useState<Document | null>(null);
+    const [profile,setProfile]=useState<PersonalProfile>({});
+    const [tags,setTags] = useState('');
+    const refresh = async () => setDocuments(await (await privateRequest(base)).json());
+    const act = async (operation: () => Promise<void>) => {
+        setError('');
+        try { await operation(); } catch (e) { setError((e as Error).message); }
+    };
+    useEffect(() => { void act(refresh); }, []);
+    const handleFileUpload = async (files: FileList | null, replace?: string) => {
+        if (!files?.length || uploading) return;
         setUploading(true);
-        const file = files[0];
-
-        // Mock upload - replace with actual API call
-        const newDoc: Document = {
-            id: `doc-${Date.now()}`,
-            name: file.name,
-            size: file.size,
-            uploadedAt: new Date(),
-            status: 'processing'
-        };
-
-        setDocuments(prev => [...prev, newDoc]);
-
-        // Simulate processing
-        setTimeout(() => {
-            setDocuments(prev =>
-                prev.map(doc =>
-                    doc.id === newDoc.id ? { ...doc, status: 'ready' } : doc
-                )
-            );
-            setUploading(false);
-        }, 2000);
+        const selected = Array.from(files);
+        const errors: string[] = [];
+        for (const [index,file] of selected.entries()) {
+            setProgress(`Processing ${index+1} of ${selected.length}: ${file.name}`);
+            const data = new FormData();
+            data.append('file',file);
+            data.append('ocr',String(ocr));
+            data.append('semantic',String(semantic));
+            if (replace) data.append('replace',replace);
+            try { await uploadDocument(data,percent=>setProgress(percent===100 ? 'Indexing '+file.name : `File ${index+1}/${selected.length} · ${percent}%`)); }
+            catch (e) { errors.push(`${file.name}: ${(e as Error).message}`); }
+        }
+        await act(refresh);
+        setError(errors.join(' · ')); setProgress(''); setUploading(false);
     };
-
-    const handleDelete = (id: string) => {
-        setDocuments(prev => prev.filter(doc => doc.id !== id));
-    };
+    const inspect = (doc: Document) => act(async () => {
+        const sections = await (await privateRequest(`${base}/${doc.id}/preview`)).json();
+        setPreview(sections.map((s:any) => s.content).join('\n\n'));
+        setProfile(doc.metadata?.profile || (doc.metadata?.facts ? {'Professional summary':doc.metadata.facts} : {})); setTags(doc.metadata?.tags || ''); setEditing(doc);
+    });
+    const download = (doc: Document) => act(async () => {
+        const url = URL.createObjectURL(await (await privateRequest(`${base}/${doc.id}/download`)).blob());
+        const a = document.createElement('a'); a.href=url; a.download=doc.name; a.click();
+        setTimeout(() => URL.revokeObjectURL(url),1000);
+    });
+    const handleDelete = (id: string) => act(async () => {
+        if (!window.confirm('Delete this original and its indexed text and profile facts?')) return;
+        await privateRequest(`${base}/${id}`,{method:'DELETE'}); setEditing(null); setMatches([]); await refresh();
+    });
 
     const handleDrag = (e: React.DragEvent) => {
         e.preventDefault();
@@ -124,7 +146,7 @@ export default function KnowledgebasePage({ onBack }: KnowledgebasePageProps) {
                             type="file"
                             id="file-upload"
                             className="hidden"
-                            accept=".pdf,.txt,.md,.docx"
+                            multiple accept=".pdf,.txt,.md,.markdown,.docx,.csv,.json,.jpg,.jpeg,.png"
                             onChange={(e) => handleFileUpload(e.target.files)}
                             disabled={uploading}
                         />
@@ -135,13 +157,41 @@ export default function KnowledgebasePage({ onBack }: KnowledgebasePageProps) {
                                 : 'hover:opacity-90 active:scale-95'
                                 }`}
                         >
-                            {uploading ? 'Uploading...' : 'Choose File'}
+                            {uploading ? progress : 'Choose Files'}
                         </label>
                         <p className="text-[10px] text-muted-foreground mt-3">
-                            Supported: PDF, TXT, Markdown, DOCX (max 10MB)
+                            Supported: PDF, DOCX, TXT, Markdown, CSV and JSON (10 MB each)
                         </p>
                     </div>
 
+                    <label className="block text-xs"><input type="checkbox" checked={semantic} onChange={e=>setSemantic(e.target.checked)} /> Send chunks to OpenAI for semantic indexing</label>
+                    <label className="block text-xs"><input type="checkbox" checked={ocr} onChange={e=>setOcr(e.target.checked)} /> Send images and scanned PDFs to Gemini for OCR</label>
+                    {error && <p role="alert" className="text-destructive text-sm">{error}</p>}
+                    <form className="flex gap-2" onSubmit={e=>{ e.preventDefault(); void act(async()=>setMatches(await (await privateRequest(base+'/search?q='+encodeURIComponent(query))).json())); }}>
+                        <input className="flex-1 bg-card border rounded p-2" placeholder="Search document contents" aria-label="Search documents" value={query} onChange={e=>setQuery(e.target.value)} />
+                        <button>Search</button>
+                    </form>
+                    {matches.map((m,i)=><p className="text-xs whitespace-pre-wrap" key={i}>{m}</p>)}
+                    {editing && <section className="bg-card rounded-xl border p-4 space-y-2">
+                        <button className="float-right" onClick={()=>setEditing(null)}>Close</button><strong>{editing.name}</strong>
+                        <pre className="whitespace-pre-wrap max-h-48 overflow-auto text-xs">{preview}</pre>
+                        <details open><summary>Confirmed profile facts</summary><div className="max-h-56 overflow-auto">
+                            {profileFields.map(k=><label key={k} className="block text-xs">{k}<textarea className="w-full border bg-background p-1" rows={2} value={profile[k] || ''} onChange={e=>setProfile({...profile,[k]:e.target.value})}/></label>)}
+                        </div></details>
+                        <label>Tags <input className="border bg-background" value={tags} onChange={e=>setTags(e.target.value)} /></label>
+                        <button className="block text-primary" onClick={()=>act(async()=>{
+                            const prefs=await chrome.storage.local.get(['extenda_active_provider','extenda_provider_keys','extenda_default_models','extenda_ollama_url']);
+                            const provider=prefs.extenda_active_provider || 'google';
+                            if (!confirm('Send excerpts from this document to your selected AI provider for profile suggestions?')) return;
+                            const res=await privateRequest(`${base}/${editing.id}/suggest`,{method:'POST',headers:{'Content-Type':'application/json'},
+                                body:JSON.stringify({modelConfig:{provider,model:prefs.extenda_default_models?.[provider],apiKey:prefs.extenda_provider_keys?.[provider],baseURL:prefs.extenda_ollama_url}})});
+                            setProfile((await res.json()).profile);
+                        })}>Suggest facts for review</button>
+                        <button className="text-primary" onClick={()=>act(async()=>{
+                            await privateRequest(`${base}/${editing.id}/profile`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile,tags})});
+                            setEditing(null); await refresh();
+                        })}>Save confirmed facts and tags</button>
+                    </section>}
                     {/* Documents List */}
                     {documents.length > 0 && (
                         <div>
@@ -164,7 +214,7 @@ export default function KnowledgebasePage({ onBack }: KnowledgebasePageProps) {
                                                     <span>{formatFileSize(doc.size)}</span>
                                                     <span>•</span>
                                                     <span>
-                                                        {doc.uploadedAt.toLocaleDateString()}
+                                                        {new Date(doc.uploadedAt).toLocaleDateString()}
                                                     </span>
                                                 </div>
                                             </div>
@@ -184,6 +234,12 @@ export default function KnowledgebasePage({ onBack }: KnowledgebasePageProps) {
                                                 <AlertCircle className="h-5 w-5 text-destructive" />
                                             )}
 
+                                            <div className="flex flex-col text-xs text-primary">
+                                                <button onClick={()=>inspect(doc)}>Preview / profile</button>
+                                                {doc.hasOriginal && <button onClick={()=>download(doc)}>Download</button>}
+                                                {doc.status !== 'ready' && <button title={doc.metadata?.error} onClick={()=>act(async()=>{await privateRequest(`${base}/${doc.id}/retry`,{method:'POST'}); await refresh();})}>Retry processing</button>}
+                                                <label className="cursor-pointer">Replace<input type="file" className="hidden" onChange={e=>{if(confirm('Replace this document and its saved facts?')) void handleFileUpload(e.target.files,doc.id);}} /></label>
+                                            </div>
                                             {/* Delete */}
                                             <button
                                                 onClick={() => handleDelete(doc.id)}

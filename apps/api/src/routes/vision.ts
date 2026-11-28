@@ -2,10 +2,14 @@
  * Vision API Routes - Element identification using Gemini Vision
  */
 
+import { bodyLimit } from 'hono/body-limit';
 import { Hono } from 'hono';
 import { identifyElement, analyzePageElements } from '../services/vision-analyzer.js';
 
+import { authMiddleware } from '../lib/auth.js';
 const vision = new Hono();
+vision.use('*',authMiddleware);
+vision.use('*',bodyLimit({maxSize: 12*1024*1024}));
 
 /**
  * POST /vision/identify-element
@@ -21,7 +25,6 @@ vision.post('/identify-element', async (c) => {
             }, 400);
         }
 
-        console.log(`[Vision] Identifying element: "${description}"`);
 
         const element = await identifyElement(screenshot, description);
 
@@ -38,9 +41,9 @@ vision.post('/identify-element', async (c) => {
         });
 
     } catch (error: any) {
-        console.error('[Vision] Error:', error);
+        console.error('[Vision] Error');
         return c.json({
-            error: error.message
+            error: 'Screenshot analysis failed'
         }, 500);
     }
 });
@@ -59,7 +62,6 @@ vision.post('/analyze-page', async (c) => {
             }, 400);
         }
 
-        console.log('[Vision] Analyzing page elements');
 
         const elements = await analyzePageElements(screenshot);
 
@@ -69,9 +71,9 @@ vision.post('/analyze-page', async (c) => {
         });
 
     } catch (error: any) {
-        console.error('[Vision] Error:', error);
+        console.error('[Vision] Error');
         return c.json({
-            error: error.message
+            error: 'Screenshot analysis failed'
         }, 500);
     }
 });

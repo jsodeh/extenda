@@ -32,7 +32,7 @@ templates.get('/', async (c) => {
 
         return c.json({ templates: result });
     } catch (error) {
-        console.error('Error fetching templates:', error);
+        console.error('Error fetching templates');
         return c.json({ error: 'Failed to fetch templates' }, 500);
     }
 });
@@ -65,7 +65,7 @@ templates.get('/:id', async (c) => {
 
         return c.json({ template });
     } catch (error) {
-        console.error('Error fetching template:', error);
+        console.error('Error fetching template');
         return c.json({ error: 'Failed to fetch template' }, 500);
     }
 });
@@ -87,6 +87,7 @@ templates.post('/execute', async (c) => {
             .where(
                 and(
                     eq(workflows.id, templateId as any),
+                    or(eq(workflows.isPublic,true),eq(workflows.userId,user.id)),
                     eq(workflows.isTemplate, true)
                 )
             );
@@ -95,18 +96,11 @@ templates.post('/execute', async (c) => {
             return c.json({ error: 'Template not found' }, 404);
         }
 
-        // Replace parameters in template definition
-        let workflowJson = JSON.stringify(template.definition);
-
-        if (parameters && typeof parameters === 'object') {
-            for (const [key, value] of Object.entries(parameters)) {
-                const placeholder = `\${${key}}`;
-                // Simple string replacement for basic templates
-                workflowJson = workflowJson.replace(new RegExp(`\\$\\{${key}\\}`, 'g'), String(value));
-            }
-        }
-
-        const workflow = JSON.parse(workflowJson);
+        const workflow = JSON.parse(JSON.stringify(template.definition), (_key, value) => {
+            if (typeof value !== 'string' || !parameters || typeof parameters !== 'object') return value;
+            return value.replace(/\$\{([^{}]+)\}/g, (match, key) =>
+                Object.hasOwn(parameters, key) ? String(parameters[key]) : match);
+        });
 
         return c.json({
             workflow,
@@ -114,7 +108,7 @@ templates.post('/execute', async (c) => {
             description: template.description
         });
     } catch (error) {
-        console.error('Error executing template:', error);
+        console.error('Error executing template');
         return c.json({ error: 'Failed to execute template' }, 500);
     }
 });

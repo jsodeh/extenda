@@ -39,7 +39,7 @@ export class CalendlyAdapter extends BaseAdapter {
     actions = ACTIONS;
 
     async execute(actionName: string, params: any, context: any): Promise<any> {
-        const token = process.env.CALENDLY_API_TOKEN;
+        const token = context.tokens?.access_token || (context.userId && context.userId === process.env.INTEGRATION_CREDENTIAL_OWNER ? process.env.CALENDLY_API_TOKEN : undefined);
         const api = axios.create({
             baseURL: 'https://api.calendly.com',
             headers: {

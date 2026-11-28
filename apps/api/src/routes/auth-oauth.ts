@@ -1,3 +1,6 @@
+import { allowedExtensionOrigin } from '../lib/auth.js';
+import { oauthManager } from '../services/oauth-manager.js';
+import { getCookie,setCookie,deleteCookie } from 'hono/cookie';
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
@@ -25,7 +28,7 @@ function getOAuthProviders(): Record<string, OAuthConfig> {
             tokenUrl: 'https://oauth2.googleapis.com/token',
             userInfoUrl: 'https://www.googleapis.com/oauth2/v2/userinfo',
             clientId: process.env.GOOGLE_CLIENT_ID || '',
-            clientSecret: process.env.GOOGLE_AUTH_CLIENT_SECRET || '',
+            clientSecret: process.env.GOOGLE_AUTH_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || '',
             scopes: [
                 'openid',
                 'email',
@@ -72,51 +75,33 @@ function getOAuthProviders(): Record<string, OAuthConfig> {
             userInfoUrl: 'https://api.linkedin.com/v2/userinfo',
             clientId: process.env.LINKEDIN_CLIENT_ID || '',
             clientSecret: process.env.LINKEDIN_CLIENT_SECRET || '',
-            scopes: ['openid', 'profile', 'email', 'w_member_social', 'r_liteprofile'],
+            scopes: ['openid', 'profile', 'email'],
             redirectUri: process.env.LINKEDIN_REDIRECT_URI || 'http://localhost:3000/oauth/auth/callback/linkedin'
         }
     };
 }
-
-// Debug: Log OAuth configuration at startup (after first call)
-let debugLogged = false;
-function logDebugOnce() {
-    if (!debugLogged) {
-        const providers = getOAuthProviders();
-        console.log('--- OAuth Auth Configuration Validation ---');
-        console.log('Google Auth Client ID:', providers.google.clientId ? '✅ Present' : '❌ MISSING');
-        console.log('Google Auth Client Secret:', providers.google.clientSecret ? '✅ Present' : '❌ MISSING');
-        console.log('Google Auth Redirect URI:', providers.google.redirectUri);
-        
-        if (!providers.google.clientId) {
-            console.error('CRITICAL: GOOGLE_CLIENT_ID is not defined. Google Authentication will fail.');
-        }
-        
-        console.log('-------------------------------------------');
-        debugLogged = true;
-    }
-}
-
 
 /**
  * GET /oauth/auth/:provider
  * Initiate OAuth flow for user authentication
  */
 authOAuth.get('/:provider', (c) => {
-    logDebugOnce();
     const OAUTH_AUTH_PROVIDERS = getOAuthProviders();
     const provider = c.req.param('provider') as keyof typeof OAUTH_AUTH_PROVIDERS;
     const config = OAUTH_AUTH_PROVIDERS[provider];
 
-    if (!config) {
+    if (!Object.hasOwn(OAUTH_AUTH_PROVIDERS,provider) || !config) {
         return c.json({ error: 'Invalid OAuth provider' }, 400);
     }
 
     // Generate state for CSRF protection
+    const origin=c.req.query('origin') || '';
+    if (!allowedExtensionOrigin(origin))
+        return c.json({error:'Register this Chrome extension origin before signing in'},400);
     const state = crypto.randomUUID();
 
     // Store state in cookie (simplified - in production use session)
-    c.header('Set-Cookie', `oauth_auth_state=${state}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600`);
+    setCookie(c,'oauth_auth_state',state+'|'+origin+'|'+provider,{httpOnly:true,secure:new URL(c.req.url).protocol==='https:',sameSite:'Lax',path:'/oauth/auth',maxAge:600});
 
     // Build authorization URL
     const params = new URLSearchParams({
@@ -150,7 +135,7 @@ authOAuth.get('/callback/:provider', async (c) => {
     const provider = c.req.param('provider') as keyof typeof OAUTH_AUTH_PROVIDERS;
     const config = OAUTH_AUTH_PROVIDERS[provider];
 
-    if (!config) {
+    if (!Object.hasOwn(OAUTH_AUTH_PROVIDERS,provider) || !config) {
         return c.json({ error: 'Invalid OAuth provider' }, 400);
     }
 
@@ -158,8 +143,11 @@ authOAuth.get('/callback/:provider', async (c) => {
     const state = c.req.query('state');
     const error = c.req.query('error');
 
+    const [expected,origin,boundProvider]=(getCookie(c,'oauth_auth_state') || '').split('|');
+    if (!state || state!==expected || provider!==boundProvider || !allowedExtensionOrigin(origin || '')) return c.json({error:'OAuth state expired'},400);
+    deleteCookie(c,'oauth_auth_state',{path:'/oauth/auth'});
     if (error) {
-        return sendErrorResponse(c, provider, `OAuth error: ${error}`);
+        return sendErrorResponse(c, provider, 'Authorization declined');
     }
 
     if (!code) {
@@ -184,8 +172,7 @@ authOAuth.get('/callback/:provider', async (c) => {
         });
 
         if (!tokenResponse.ok) {
-            const error = await tokenResponse.text();
-            console.error('Token exchange failed:', error);
+            console.error('Token exchange failed', tokenResponse.status);
             return sendErrorResponse(c, provider, 'Failed to exchange authorization code');
         }
 
@@ -211,11 +198,11 @@ authOAuth.get('/callback/:provider', async (c) => {
         let name: string;
 
         if (provider === 'google') {
-            email = userInfo.email;
-            name = userInfo.name || userInfo.email.split('@')[0];
+            email = userInfo.verified_email || userInfo.email_verified ? userInfo.email : undefined;
+            name = userInfo.name || email?.split('@')[0];
         } else if (provider === 'github') {
             // GitHub might not provide email in userinfo, need to fetch separately
-            email = userInfo.email;
+            email = '';
 
             // If email is not public, fetch from emails endpoint
             if (!email) {
@@ -228,14 +215,14 @@ authOAuth.get('/callback/:provider', async (c) => {
 
                 if (emailsResponse.ok) {
                     const emails = await emailsResponse.json();
-                    const primaryEmail = emails.find((e: any) => e.primary);
-                    email = primaryEmail?.email || emails[0]?.email;
+                    const primaryEmail = emails.find((e: any) => e.primary && e.verified);
+                    email = primaryEmail?.email;
                 }
             }
 
             name = userInfo.name || userInfo.login;
         } else if (provider === 'linkedin') {
-            email = userInfo.email;
+            email = userInfo.email_verified === true ? userInfo.email : undefined;
             name = userInfo.name || userInfo.localizedFirstName + ' ' + userInfo.localizedLastName;
         } else {
             return sendErrorResponse(c, provider, 'Unsupported provider');
@@ -257,30 +244,18 @@ authOAuth.get('/callback/:provider', async (c) => {
                 name,
                 role: 'free',
                 settings: {},
-                googleAccessToken: provider === 'google' ? tokenData.access_token : null,
-                googleRefreshToken: provider === 'google' ? tokenData.refresh_token : null,
             }).returning();
             user = newUser;
-        } else {
-            // Update existing user with new tokens
-            if (provider === 'google') {
-                const updates: any = {
-                    googleAccessToken: tokenData.access_token
-                };
-                if (tokenData.refresh_token) {
-                    updates.googleRefreshToken = tokenData.refresh_token;
-                }
-
-                const [updatedUser] = await db.update(users)
-                    .set(updates)
-                    .where(eq(users.id, user.id))
-                    .returning();
-                user = updatedUser;
-            }
         }
-
+        if (provider === 'google') {
+            await oauthManager.storeCredentials({userId:user.id,provider,accessToken:tokenData.access_token,
+                refreshToken:tokenData.refresh_token,
+                expiresAt:tokenData.expires_in ? new Date(Date.now()+tokenData.expires_in*1000) : undefined,
+                scope:tokenData.scope,metadata:{sub:userInfo.sub || userInfo.id}});
+        }
         // Generate JWT tokens
-        const jwtSecret = process.env.JWT_SECRET || 'dev-secret-key';
+        const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) throw new Error('JWT_SECRET must be configured');
 
         const jwtAccessToken = await sign(
             {
@@ -343,19 +318,19 @@ authOAuth.get('/callback/:provider', async (c) => {
             email: user.email,
             name: user.name,
             role: user.role
-        })},
+        }).replace(/</g,'\\u003c')},
                             tokens: {
                                 accessToken: '${jwtAccessToken}',
                                 refreshToken: '${jwtRefreshToken}'
                             }
-                        }, '*');
+                        }, ${JSON.stringify(origin)});
                         setTimeout(() => window.close(), 2000);
                     </script>
                 </body>
             </html>
         `);
     } catch (error) {
-        console.error('OAuth authentication error:', error);
+        console.error('OAuth authentication failed',provider);
         return sendErrorResponse(c, provider, 'Internal server error during authentication');
     }
 });

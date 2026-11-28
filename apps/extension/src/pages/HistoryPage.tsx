@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { MessageSquare, Clock, ArrowRight, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../contexts/auth-context';
-import { getApiUrl } from '../lib/api';
+import { getApiUrl, privateRequest } from '../lib/api';
 
 interface ChatSession {
     id: string;
@@ -26,6 +26,11 @@ export default function HistoryPage({ onSelectSession, onBack }: HistoryPageProp
         }
     }, [isLoaded]);
 
+    const [jobs,setJobs]=useState<any[]>([]);
+    const [zone,setZone]=useState('UTC');
+    const [error,setError]=useState('');
+    const refreshJobs=async()=>{const data=await (await privateRequest('/api/schedule')).json();setJobs(data.jobs);setZone(data.timezone);};
+    useEffect(()=>{if(accessToken) refreshJobs().catch(e=>setError(e.message));},[accessToken]);
     const loadSessions = async () => {
         try {
             if (!accessToken) {
@@ -76,6 +81,18 @@ export default function HistoryPage({ onSelectSession, onBack }: HistoryPageProp
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                <section className="bg-card rounded-xl border p-4 space-y-2"><h2 className="font-semibold">Scheduled tasks</h2>
+                    <p className="text-sm text-muted-foreground">Desktop reminders appear when Chrome is connected. If Chrome is closed or offline, they appear after it reconnects.</p>
+                    <form onSubmit={async e=>{e.preventDefault();try{await privateRequest('/api/schedule/timezone',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({timezone:zone})});setError('Timezone saved');}catch(e){setError((e as Error).message);}}}>
+                        <label>Timezone <input className="bg-background border rounded" value={zone} onChange={e=>setZone(e.target.value)} /></label> <button>Save</button>
+                    </form>
+                    {error && <p role="status">{error}</p>}
+                    {jobs.map(job=><div key={job.id} className="text-sm border-t py-2">{job.approved_payload.summary || job.approved_payload.message || job.action} · {new Date(job.due_at).toLocaleString(undefined,{timeZone:job.timezone})} {job.timezone} · {job.status}
+                        {job.result?.message && <p>{job.result.message}</p>}
+                        {job.result?.postUrl && <a href={job.result.postUrl} target="_blank" rel="noreferrer">View post</a>}
+                        {job.status==='pending' && <button className="ml-2 text-primary" onClick={async()=>{if(confirm('Cancel this scheduled action?'))try{await privateRequest('/api/schedule/'+job.id,{method:'DELETE'});await refreshJobs();}catch(e){setError((e as Error).message);}}}>Cancel</button>}
+                    </div>)}
+                </section>
                 {sessions.length === 0 ? (
                     <div className="text-center text-muted-foreground mt-10">
                         No chat history found.

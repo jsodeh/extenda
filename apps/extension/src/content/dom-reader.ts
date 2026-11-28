@@ -1,10 +1,12 @@
+import { formIdentity } from './form-identity';
 /**
  * DOMReader Tool - Extract content from web pages
  * Executed in content script context
  */
 
 export interface DOMReaderParams {
-    action: 'extract_text' | 'extract_structured' | 'find_element' | 'get_metadata' | 'screenshot';
+    selectors?: string[];
+    action: 'form_identity' | 'inspect_form' | 'extract_text' | 'extract_structured' | 'find_element' | 'get_metadata' | 'screenshot';
     selector?: string;
     schema?: Record<string, string>; // CSS selectors for structured extraction
     description?: string; // Natural language element description
@@ -14,6 +16,23 @@ export interface DOMReaderResult {
     success: boolean;
     data?: any;
     error?: string;
+}
+
+export function visible(element: HTMLElement) {
+    if (element.closest('[hidden],[aria-hidden=true],[inert]')) return false;
+    for (let node: HTMLElement | null = element; node; node = node.parentElement) {
+        const style = getComputedStyle(node);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+    }
+    return true;
+}
+
+export function choiceList(control: HTMLElement) {
+    const list = control.getAttribute('role') === 'listbox' ? control :
+        document.getElementById(control.getAttribute('aria-controls') || '');
+    if (list?.getAttribute('role') !== 'listbox') return [];
+    return Array.from(list.querySelectorAll<HTMLElement>('[role=option]'))
+        .filter(option => option.closest('[role=listbox]') === list && option.getAttribute('aria-disabled') !== 'true');
 }
 
 export class DOMReader {
@@ -124,6 +143,23 @@ export class DOMReader {
             let data: any;
 
             switch (params.action) {
+                case 'form_identity':
+                    data = formIdentity(params.selectors || []);
+                    break;
+                case 'inspect_form':
+                    data = Array.from(document.querySelectorAll<HTMLElement>('form,input:not([type=hidden]),select,textarea,button,[contenteditable=true],[role=alert],[role=combobox],[role=listbox]')).filter(visible).slice(0,150).map(el => {
+                        const control = el as HTMLInputElement;
+                        const labelIds = (el.getAttribute('aria-labelledby') || '').split(/\s+/);
+                        return {
+                            selector: this.getSelector(el), type: el.getAttribute('role') || control.type || el.tagName.toLowerCase(),
+                            label: el.getAttribute('aria-label') || labelIds.map(id=>document.getElementById(id)?.textContent).filter(Boolean).join(' ') ||
+                                control.labels?.[0]?.textContent || control.placeholder || (control.type === 'button' ? control.value : control.name) || (el.matches('button,[role=alert]') ? el.textContent : ''),
+                            required: control.required || el.getAttribute('aria-required') === 'true',
+                            validation: control.validationMessage, choice: ['checkbox','radio'].includes(control.type) ? control.value : undefined,
+                            options: el instanceof HTMLSelectElement ? Array.from(el.options).map(o=>({label:o.text,value:o.value})) : choiceList(el).map(o => ({label:o.textContent?.trim(),value:o.textContent?.trim()}))
+                        };
+                    });
+                    break;
                 case 'extract_text':
                     data = this.extractText(params.selector);
                     break;
@@ -170,22 +206,14 @@ export class DOMReader {
      * Generate CSS selector for element
      */
     private static getSelector(element: Element): string {
-        if (element.id) {
-            return `#${element.id}`;
-        }
-
+        if (element.id && document.querySelectorAll('#'+CSS.escape(element.id)).length === 1) return '#'+CSS.escape(element.id);
         const path: string[] = [];
         let current: Element | null = element;
-
         while (current && current !== document.body) {
-            let selector = current.tagName.toLowerCase();
-            if (current.className) {
-                selector += `.${current.className.split(' ').join('.')}`;
-            }
-            path.unshift(selector);
-            current = current.parentElement;
+            const index = Array.from(current.parentElement?.children || []).indexOf(current)+1;
+            path.unshift(current.tagName.toLowerCase()+':nth-child('+index+')');
+            current=current.parentElement;
         }
-
-        return path.join(' > ');
+        return ['body',...path].join(' > ');
     }
 }

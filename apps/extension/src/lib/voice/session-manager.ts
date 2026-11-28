@@ -28,7 +28,7 @@ export interface VoiceSessionConfig {
     onToolResult?: (name: string, result: any) => void;
 }
 
-const DEFAULT_MODEL = 'models/gemini-2.0-flash';
+const DEFAULT_MODEL = import.meta.env.VITE_GEMINI_LIVE_MODEL || 'gemini-3.8-live';
 
 /**
  * Voice Session Manager for Gemini Live API
@@ -55,8 +55,7 @@ export class VoiceSessionManager {
 
         this.setStatus('connecting');
 
-        const model = this.config.model || DEFAULT_MODEL;
-        const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${this.config.apiKey}`;
+        const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${this.config.apiKey}`;
 
         return new Promise((resolve, reject) => {
             try {
@@ -74,14 +73,14 @@ export class VoiceSessionManager {
                 };
 
                 this.ws.onerror = (error) => {
-                    console.error('[VoiceSession] WebSocket error:', error);
+                    console.error('[VoiceSession] WebSocket connection failed');
                     this.setStatus('error');
                     this.config.onError?.(new Error('WebSocket connection failed'));
                     reject(error);
                 };
 
                 this.ws.onclose = (event) => {
-                    console.log('[VoiceSession] WebSocket closed:', event.code, event.reason);
+                    console.log('[VoiceSession] WebSocket closed:', event.code);
                     this.setStatus('disconnected');
                 };
             } catch (error) {
@@ -97,9 +96,9 @@ export class VoiceSessionManager {
     private sendSetupMessage(): void {
         const setupMessage = {
             setup: {
-                model: `models/${this.config.model || DEFAULT_MODEL}`,
+                model: `models/${(this.config.model || DEFAULT_MODEL).replace(/^models\//,'')}`,
                 generation_config: {
-                    response_modalities: ['AUDIO', 'TEXT'],
+                    response_modalities: ['AUDIO'],
                     speech_config: {
                         voice_config: {
                             prebuilt_voice_config: {
@@ -108,6 +107,8 @@ export class VoiceSessionManager {
                         }
                     }
                 },
+                inputAudioTranscription:{},
+                outputAudioTranscription:{},
                 system_instruction: {
                     parts: [{
                         text: this.config.systemInstruction || this.getDefaultSystemInstruction()
@@ -163,9 +164,9 @@ When using tools, execute immediately - don't ask for confirmation unless the ac
     /**
      * Handle incoming WebSocket messages
      */
-    private async handleMessage(data: string): Promise<void> {
+    private async handleMessage(data: string | Blob): Promise<void> {
         try {
-            const message = JSON.parse(data);
+            const message = JSON.parse(typeof data==='string' ? data : await data.text());
 
             // Handle setup complete
             if (message.setupComplete) {
@@ -185,7 +186,7 @@ When using tools, execute immediately - don't ask for confirmation unless the ac
             }
 
         } catch (error) {
-            console.error('[VoiceSession] Error parsing message:', error);
+            console.error('[VoiceSession] Invalid server message');
         }
     }
 
@@ -199,6 +200,8 @@ When using tools, execute immediately - don't ask for confirmation unless the ac
             return;
         }
 
+        if(content.inputTranscription?.text) this.config.onTranscript?.(content.inputTranscription.text,'user');
+        if(content.outputTranscription?.text) this.config.onTranscript?.(content.outputTranscription.text,'assistant');
         // Handle model turn with audio/text
         if (content.modelTurn?.parts) {
             this.setStatus('speaking');
@@ -226,7 +229,6 @@ When using tools, execute immediately - don't ask for confirmation unless the ac
      * Handle tool/function calls from Gemini
      */
     private async handleToolCall(toolCall: any): Promise<void> {
-        console.log('[VoiceSession] Tool call received:', toolCall);
         this.setStatus('thinking');
 
         const functionCalls = toolCall.functionCalls || [];
@@ -241,7 +243,6 @@ When using tools, execute immediately - don't ask for confirmation unless the ac
                 // Execute tool via unified router
                 const result = await executeTool(name, args || {}, this.config.context || {});
 
-                console.log('[VoiceSession] Tool result:', name, result);
                 this.config.onToolResult?.(name, result);
 
                 responses.push({
@@ -250,7 +251,7 @@ When using tools, execute immediately - don't ask for confirmation unless the ac
                     response: { result: JSON.stringify(result) }
                 });
             } catch (error: any) {
-                console.error('[VoiceSession] Tool error:', name, error);
+                console.error('[VoiceSession] Tool failed:', name);
 
                 responses.push({
                     id,
@@ -283,10 +284,10 @@ When using tools, execute immediately - don't ask for confirmation unless the ac
 
         const message = {
             realtimeInput: {
-                mediaChunks: [{
+                audio: {
                     mimeType: 'audio/pcm;rate=16000',
                     data: audioBase64
-                }]
+                }
             }
         };
 

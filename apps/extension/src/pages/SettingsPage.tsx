@@ -31,9 +31,9 @@ interface DefaultModels {
 }
 
 const PROVIDER_MODELS = {
-    google: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-2.0-flash-exp', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-1.0-pro'],
-    openai: ['gpt-4o', 'gpt-4o-mini', 'o1-preview', 'o1-mini'],
-    anthropic: ['claude-3-5-sonnet-latest', 'claude-3-opus-latest', 'claude-3-haiku-20240307'],
+    google: ['gemini-flash-latest', 'gemini-pro-latest'],
+    openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'gpt-4.1-mini'],
+    anthropic: ['claude-sonnet-4-6', 'claude-sonnet-5-5'],
     ollama: ['llama3', 'gemma3:4b', 'mistral', 'codellama', 'phi3']
 };
 
@@ -147,15 +147,16 @@ const ProviderConfig = ({
                 <label className="block text-xs font-medium text-foreground">
                     Default Model
                 </label>
-                <select
+                <input aria-label="Default model" list="provider-model-suggestions"
                     value={defaultModels[selectedProvider as keyof DefaultModels]}
                     onChange={(e) => handleModelChange(selectedProvider as keyof DefaultModels, e.target.value)}
                     className="w-full px-3 py-2.5 rounded-lg border-2 border-border bg-background text-foreground text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none cursor-pointer transition-all"
-                >
+                />
+                <datalist id="provider-model-suggestions">
                     {PROVIDER_MODELS[selectedProvider as keyof typeof PROVIDER_MODELS].map(m => (
                         <option key={m} value={m}>{m}</option>
                     ))}
-                </select>
+                </datalist>
             </div>
 
             <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/30 border border-border/50">
@@ -187,9 +188,9 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
     const [activeSection, setActiveSection] = useState('root');
     const [providerKeys, setProviderKeys] = useState<KeyStorage>({ google: '', openai: '', anthropic: '', ollama: '' });
     const [defaultModels, setDefaultModels] = useState<DefaultModels>({ 
-        google: 'gemini-2.0-flash', 
+        google: 'gemini-flash-latest',
         openai: 'gpt-4o', 
-        anthropic: 'claude-3-5-sonnet-latest', 
+        anthropic: 'claude-sonnet-4-6',
         ollama: 'llama3' 
     });
     const [selectedProvider, setSelectedProvider] = useState<keyof KeyStorage>('google');
@@ -233,7 +234,7 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
         }
 
         const fetchPreferences = async () => {
-            const token = localStorage.getItem('accessToken');
+            const token = (await chrome.storage.local.get('accessToken')).accessToken;
             if (!token) return;
             try {
                 const url = apiUrl || (await (await import('../lib/api')).getApiUrl());
@@ -270,7 +271,7 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
             }
         }
 
-        const token = localStorage.getItem('accessToken');
+        const token = (await chrome.storage.local.get('accessToken')).accessToken;
         if (!token) {
             setSaved(true);
             setTimeout(() => setSaved(false), 2000);

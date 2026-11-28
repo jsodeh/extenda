@@ -1,144 +1,204 @@
-/**
- * FormFiller Tool - Automate form interactions
- * Runs in content script context
- */
-
+import { formDestination, formIdentity, owningForm, verifyFormIdentity } from './form-identity';
+import { DOMReader, visible, choiceList } from './dom-reader';
 export interface FormFillerParams {
-    action: 'fill_text' | 'click' | 'select' | 'submit' | 'fill_form';
+    action: 'fill_text' | 'click' | 'select' | 'submit' | 'fill_form' | 'attach' | 'advance';
     selector?: string;
     value?: string;
-    formData?: Record<string, string>;
+    reviewedFields?: ReturnType<typeof formIdentity>;
+    formData?: Record<string, string | boolean>;
+    file?: { name: string; type: string; bytes: number[] };
 }
 
-export interface FormFillerResult {
-    success: boolean;
-    message?: string;
-    error?: string;
+function field(selector: string) {
+    const matches = document.querySelectorAll<HTMLElement>(selector);
+    if (matches.length !== 1 || !visible(matches[0]) || matches[0].matches(':disabled,[aria-disabled=true],[readonly],[hidden],input[type=hidden]')) {
+        throw new Error('Field unavailable or ambiguous. Review the current page.');
+    }
+    return matches[0];
+}
+
+function reviewableForm(form: HTMLFormElement) {
+    if (
+        form.querySelector(
+            'input[type=password],input[autocomplete=one-time-code],iframe[src*=captcha i],[name*=captcha i]'
+        )
+    ) {
+        throw new Error('Complete the verification on the page manually');
+    }
 }
 
 export class FormFiller {
-    /**
-     * Fill text input or textarea
-     */
-    static fillText(selector: string, value: string): void {
-        const element = document.querySelector(selector) as HTMLInputElement | HTMLTextAreaElement;
-        if (!element) {
-            throw new Error(`Element not found: ${selector}`);
-        }
-
-        element.value = value;
-
-        // Trigger input events for frameworks that listen to them
-        element.dispatchEvent(new Event('input', { bubbles: true }));
-        element.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-
-    /**
-     * Click an element
-     */
-    static click(selector: string): void {
-        const element = document.querySelector(selector) as HTMLElement;
-        if (!element) {
-            throw new Error(`Element not found: ${selector}`);
-        }
-
-        element.click();
-    }
-
-    /**
-     * Select option from dropdown
-     */
-    static select(selector: string, value: string): void {
-        const element = document.querySelector(selector) as HTMLSelectElement;
-        if (!element) {
-            throw new Error(`Element not found: ${selector}`);
-        }
-
-        element.value = value;
-        element.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-
-    /**
-     * Submit form
-     */
-    static submit(selector: string): void {
-        const form = document.querySelector(selector) as HTMLFormElement;
-        if (!form) {
-            throw new Error(`Form not found: ${selector}`);
-        }
-
-        form.submit();
-    }
-
-    /**
-     * Fill entire form with data
-     */
-    static fillForm(formData: Record<string, string>): void {
-        for (const [selector, value] of Object.entries(formData)) {
-            const element = document.querySelector(selector);
-
-            if (!element) {
-                console.warn(`Element not found: ${selector}`);
-                continue;
+    private static async fillText(selector: string, value: string | boolean, verify: () => void) {
+        const el = field(selector);
+        verify();
+        if (el.matches('[role=combobox],[role=listbox]')) {
+            const available = () => choiceList(el).filter(o => visible(o) && o.textContent?.trim() === String(value));
+            if (el.matches('[role=combobox][aria-expanded=false]') && el.getAttribute('aria-controls')) {
+                el.click();
+                await new Promise(resolve => setTimeout(resolve, 0));
             }
-
-            if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
-                this.fillText(selector, value);
-            } else if (element instanceof HTMLSelectElement) {
-                this.select(selector, value);
-            }
+            const choices = available();
+            if (choices.length !== 1) throw new Error('Select this option manually');
+            verify();
+            choices[0].click();
+            await new Promise(resolve => setTimeout(resolve, 0));
+            const current = field(selector);
+            if (choices[0].getAttribute('aria-selected') !== 'true' &&
+                (current as HTMLInputElement).value !== String(value) && current.textContent?.trim() !== String(value))
+                throw new Error('Verify the selected option on the page');
+            return;
         }
+        if (
+            (el instanceof HTMLInputElement &&
+                ['password', 'hidden', 'file', 'button', 'submit', 'reset', 'image'].includes(el.type)) ||
+            el.matches('[autocomplete="one-time-code"]')
+        )
+            throw new Error('This field requires manual completion');
+        if (el instanceof HTMLInputElement && ['checkbox', 'radio'].includes(el.type)) {
+            if (typeof value !== 'boolean' && !['true', 'false', el.value].includes(value))
+                throw new Error('Invalid choice');
+            const checked = value === true || value === 'true' || value === el.value;
+            if (el.checked !== checked) el.click();
+            await new Promise(resolve => setTimeout(resolve, 0));
+            if ((field(selector) as HTMLInputElement).checked !== checked) throw new Error('Choice was not applied');
+            return;
+        }
+        if (el instanceof HTMLSelectElement) {
+            const option = Array.from(el.options).find(
+                (o) => !o.disabled && (o.value === value || o.text === value)
+            );
+            if (!option) throw new Error('Option unavailable');
+            value = option.value;
+            Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(el, value);
+        } else if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) {
+            const proto =
+                el instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+            Object.getOwnPropertyDescriptor(proto, 'value')!.set!.call(el, String(value));
+            if (el.value !== String(value)) throw new Error('Value rejected by field');
+        } else if (el.isContentEditable || el.getAttribute('contenteditable') === 'true')
+            el.textContent = String(value);
+        else throw new Error('Unsupported field');
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const current = field(selector);
+        if ((current instanceof HTMLTextAreaElement || current instanceof HTMLInputElement ||
+            current instanceof HTMLSelectElement) && current.value !== String(value))
+            throw new Error('The page changed this answer. Review it manually.');
     }
 
-    /**
-     * Execute FormFiller action
-     */
-    static execute(params: FormFillerParams): FormFillerResult {
+    private static async submit(selector: string, verify: () => void) {
+        const el = field(selector);
+        const form = owningForm(el);
+        if (!form) throw new Error('Select a standard form to submit');
+        reviewableForm(form);
+        if (!form.reportValidity()) throw new Error('Resolve the highlighted validation errors before submission');
+        const submitter = el instanceof HTMLButtonElement || el instanceof HTMLInputElement ? el : undefined;
+        const dest = formDestination(form,submitter);
+        const answers = () => Array.from(new FormData(form, submitter).entries())
+            .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : v.name}`)
+            .join('\n');
+        const values = answers();
+        if (!window.confirm(`Submit these current answers to ${dest}?\n\n${values}`))
+            throw new Error('Submission declined');
+        const confirmation = () =>
+            Array.from(document.querySelectorAll('[role=status],[role=alert],h1,h2,.confirmation'))
+                .map((e) => e.textContent?.trim() || '')
+                .filter((t) =>
+                    /successfully submitted|application (?:was |has been )?(?:received|submitted)|thank you for (?:applying|your submission)/i.test(
+                        t
+                    )
+                );
+        const before = new Set(confirmation());
+        verify();
+        if (field(selector) !== el || owningForm(el) !== form || formDestination(form,submitter) !== dest || answers() !== values)
+            throw new Error('Submission changed. Review again.');
+        HTMLFormElement.prototype.requestSubmit.call(form,submitter);
+        for (let i = 0; i < 16; i++) {
+            const receipt = confirmation().find((t) => !before.has(t));
+            if (receipt) return receipt;
+            await new Promise((r) => setTimeout(r, 250));
+        }
+        throw new Error(
+            'Submission was requested. No confirmation observed. Check the site before taking further action.'
+        );
+    }
+
+    static async execute(params: FormFillerParams) {
         try {
-            switch (params.action) {
-                case 'fill_text':
-                    if (!params.selector || params.value === undefined) {
-                        throw new Error('selector and value required for fill_text');
-                    }
-                    this.fillText(params.selector, params.value);
-                    return { success: true, message: 'Text filled successfully' };
-
-                case 'click':
-                    if (!params.selector) {
-                        throw new Error('selector required for click');
-                    }
-                    this.click(params.selector);
-                    return { success: true, message: 'Element clicked successfully' };
-
-                case 'select':
-                    if (!params.selector || params.value === undefined) {
-                        throw new Error('selector and value required for select');
-                    }
-                    this.select(params.selector, params.value);
-                    return { success: true, message: 'Option selected successfully' };
-
-                case 'submit':
-                    if (!params.selector) {
-                        throw new Error('selector required for submit');
-                    }
-                    this.submit(params.selector);
-                    return { success: true, message: 'Form submitted successfully' };
-
-                case 'fill_form':
-                    if (!params.formData) {
-                        throw new Error('formData required for fill_form');
-                    }
-                    this.fillForm(params.formData);
-                    return { success: true, message: 'Form filled successfully' };
-
-                default:
-                    throw new Error(`Unknown action: ${params.action}`);
-            }
-        } catch (error) {
+            const { action, selector } = params;
+            const selectors = action === 'fill_form' ? Object.keys(params.formData || {}) : [selector || ''];
+            const verify = () => verifyFormIdentity(selectors,params.reviewedFields);
+            verify();
+            if (action === 'advance' && selector) {
+                const button = field(selector);
+                if (
+                    !(button instanceof HTMLButtonElement || button instanceof HTMLInputElement) ||
+                    button.type !== 'button' ||
+                    !/^(next|continue)( step)?$/i.test(
+                        (button.getAttribute('aria-label') || (button instanceof HTMLInputElement ? button.value : button.textContent) || '').trim()
+                    )
+                )
+                    throw new Error('Advance this page manually, then ask Extenda to continue');
+                const form = button.closest('form');
+                if (form) {
+                    reviewableForm(form);
+                    const invalid = Array.from(form.querySelectorAll<HTMLElement>('input:invalid,select:invalid,textarea:invalid')).find(visible);
+                    if (invalid) throw new Error('Complete the current step before continuing');
+                }
+                const before = JSON.stringify(DOMReader.execute({ action: 'inspect_form' }).data);
+                button.click();
+                for (let i = 0; i < 15; i++) {
+                    await new Promise((r) => setTimeout(r, 200));
+                    const result = DOMReader.execute({ action: 'inspect_form' });
+                    if (result.success && JSON.stringify(result.data) !== before)
+                        return { success: true, message: result.data };
+                }
+                throw new Error('Next step could not be verified. Check the page before continuing.');
+            } else if (action === 'fill_form' && params.formData) {
+                for (const [key, value] of Object.entries(params.formData)) await this.fillText(key, value, verify);
+            } else if ((action === 'fill_text' || action === 'select') && selector && params.value !== undefined) {
+                await this.fillText(selector, params.value, verify);
+            } else if (action === 'submit' && selector)
+                return { success: true, message: await this.submit(selector, verify) };
+            else if (action === 'click' && selector) {
+                const el = field(selector);
+                if (el.closest('form') || el.matches('[form]'))
+                    throw new Error('Review and use submit for form submission, or advance the page manually');
+                if (!window.confirm('Click ' + (el.getAttribute('aria-label') || el.textContent || el.tagName).trim() + ' on ' + location.href + '?'))
+                    throw new Error('Click declined');
+                el.click();
+            } else if (action === 'attach' && selector && params.file) {
+                const el = field(selector);
+                if (!(el instanceof HTMLInputElement) || el.type !== 'file')
+                    throw new Error('Select the file manually');
+                if (el.files?.length) throw new Error('Review and replace the existing selection manually');
+                const { name, type, bytes } = params.file;
+                const accepts = el.accept.toLowerCase().split(',').map(a => a.trim()).filter(Boolean);
+                if (accepts.length && !accepts.some(a => a.startsWith('.') ? name.toLowerCase().endsWith(a) :
+                    a.endsWith('/*') ? type.toLowerCase().startsWith(a.slice(0,-1)) : type.toLowerCase() === a))
+                    throw new Error('This file type is not accepted');
+                if (typeof DataTransfer !== 'function') throw new Error('Use the website file picker');
+                const transfer = new DataTransfer();
+                transfer.items.add(
+                    new File([new Uint8Array(params.file.bytes)], params.file.name, { type: params.file.type })
+                );
+                el.files = transfer.files;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                if (el.files?.[0]?.name !== name || el.files[0].size !== bytes.length) throw new Error('Use the website file picker');
+            } else throw new Error('Missing or unsupported form parameters');
+            const missing = Array.from(
+                document.querySelectorAll<HTMLInputElement>('input:invalid,textarea:invalid,select:invalid')
+            ).filter(visible).map((el) => el.labels?.[0]?.textContent || el.name || el.id);
             return {
-                success: false,
-                error: error instanceof Error ? error.message : 'Unknown error'
+                success: true,
+                message: missing.length
+                    ? 'Applied. Review required fields: ' + missing.join(', ')
+                    : 'Applied. Review the answers on the page.'
             };
+        } catch (e) {
+            return { success: false, error: (e as Error).message };
         }
     }
 }

@@ -30,7 +30,7 @@ export class BufferAdapter extends BaseAdapter {
     actions = ACTIONS;
 
     async execute(actionName: string, params: any, context: any): Promise<any> {
-        const token = process.env.BUFFER_ACCESS_TOKEN;
+        const token = context.tokens?.access_token || (context.userId && context.userId === process.env.INTEGRATION_CREDENTIAL_OWNER ? process.env.BUFFER_ACCESS_TOKEN : undefined);
         const api = axios.create({
             baseURL: 'https://api.bufferapp.com/1',
             params: { access_token: token }

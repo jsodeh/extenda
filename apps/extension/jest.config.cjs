@@ -1,4 +1,4 @@
-export default {
+module.exports = {
     preset: 'ts-jest',
     testEnvironment: 'jsdom',
     roots: ['<rootDir>/src'],
@@ -6,7 +6,7 @@ export default {
     transform: {
         '^.+\\.tsx?$': ['ts-jest', {
             tsconfig: {
-                jsx: 'react',
+                jsx: 'react-jsx',
                 esModuleInterop: true,
                 allowSyntheticDefaultImports: true
             }

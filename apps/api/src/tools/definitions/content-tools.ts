@@ -8,7 +8,7 @@ export const DOMReaderTool: Tool = {
         properties: {
             action: {
                 type: 'string',
-                enum: ['extract_text', 'extract_structured', 'find_element', 'get_metadata'],
+                enum: ['inspect_form', 'extract_text', 'extract_structured', 'find_element', 'get_metadata'],
                 description: 'Action to perform'
             },
             selector: {

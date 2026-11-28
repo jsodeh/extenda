@@ -10,3 +10,5 @@ packages/shared/dist
 .env.local
 .turbo
 *.log
+**/.env
+**/.env.*

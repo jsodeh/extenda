@@ -23,7 +23,7 @@ export async function identifyElement(
     elementDescription: string
 ): Promise<ElementLocation | null> {
     try {
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+        const model = genAI.getGenerativeModel({ model: process.env.GEMINI_VISION_MODEL || process.env.KNOWLEDGE_OCR_MODEL || 'gemini-flash-latest' });
 
         const prompt = `You are analyzing a browser screenshot to find a UI element.
 
@@ -70,14 +70,14 @@ If the element cannot be found, respond with:
         // Extract JSON from response
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         if (!jsonMatch) {
-            console.error('[VisionAnalyzer] No JSON in response:', text);
+            console.error('[VisionAnalyzer] Invalid response');
             return null;
         }
 
         const parsed = JSON.parse(jsonMatch[0]);
 
         if (!parsed.found) {
-            console.log('[VisionAnalyzer] Element not found:', parsed.reason);
+            console.log('[VisionAnalyzer] Element not found');
             return null;
         }
 
@@ -91,8 +91,7 @@ If the element cannot be found, respond with:
         };
 
     } catch (error) {
-        console.error('[VisionAnalyzer] Error:', error);
-        return null;
+        throw new Error('Vision provider could not identify the element');
     }
 }
 
@@ -103,7 +102,7 @@ export async function analyzePageElements(
     screenshotBase64: string
 ): Promise<ElementLocation[]> {
     try {
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+        const model = genAI.getGenerativeModel({ model: process.env.GEMINI_VISION_MODEL || process.env.KNOWLEDGE_OCR_MODEL || 'gemini-flash-latest' });
 
         const prompt = `Analyze this browser screenshot and identify all interactive elements (buttons, links, inputs, etc.).
 
@@ -142,7 +141,6 @@ Focus on the most prominent interactive elements. Limit to 10 elements maximum.`
         return JSON.parse(jsonMatch[0]);
 
     } catch (error) {
-        console.error('[VisionAnalyzer] Error analyzing page:', error);
-        return [];
+        throw new Error('Vision provider could not analyze the screenshot');
     }
 }

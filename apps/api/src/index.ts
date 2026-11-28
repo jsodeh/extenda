@@ -1,12 +1,6 @@
-import './env.js'; // Ensure env vars are loaded before other imports
-import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
-
-// Still getting __dirname for app level use, but dotenv is already handled
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const envPath = resolve(__dirname, '../.env');
-
+import './env.js';
+import { WorkflowPersistence } from './services/workflow-persistence.js';
+import { needsApproval } from './lib/approval.js';
 // Imports
 import { randomUUID } from 'node:crypto';
 import { serve } from '@hono/node-server';
@@ -14,46 +8,21 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { Server } from 'socket.io';
 import { EVENTS_CLIENT, EVENTS_SERVER, WorkflowStartPayload, WorkflowApprovePayload, WorkflowResumePayload, Execution } from '@extenda/shared';
-import { eq } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { runMigrations } from './db/migrate.js';
-import { repairDatabaseSync } from './db/repair-sync.js';
+
 import app from './server.js';
 import { orchestrator } from './services/orchestrator.js';
 import { intentClassifier } from './services/intent-classifier.js';
 import { generateText } from './lib/models.js';
 import { verify } from 'hono/jwt';
-import { authMiddleware, AuthEnv } from './lib/auth.js';
+import { authMiddleware, allowedExtensionOrigin, AuthEnv } from './lib/auth.js';
 import { authOAuth } from './routes/auth-oauth.js';
-import { db } from './db/index.js';
+import { db,pool } from './db/index.js';
 import { users, executions, workflows } from './db/schema.js';
-import { oauthManager } from './services/oauth-manager.js';
 import { chatService } from './services/chat-service.js';
 
-// Debug: Verify env vars are loaded
-console.log('App starting...');
-console.log('Loading .env from:', envPath);
-console.log('Environment:', process.env.NODE_ENV);
-console.log('PORT:', process.env.PORT);
-
-// Security-Safe Diagnostic Probe
-const envKeys = Object.keys(process.env).filter(k => k.includes('GOOGLE') || k.includes('CLIENT'));
-console.log('[System] Startup Diagnostic Env Probe - Found Keys:', envKeys.join(', '));
-if (process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_AUTH_CLIENT_ID) {
-    console.log('[System] Credentials Status: GOOGLE_CLIENT_ID present? ' + (!!process.env.GOOGLE_CLIENT_ID) + 
-                ', GOOGLE_AUTH_CLIENT_ID present? ' + (!!process.env.GOOGLE_AUTH_CLIENT_ID));
-} else {
-    console.warn('[System] CRITICAL: No Google Client IDs found in process.env at startup.');
-}
-
 const port = Number(process.env.PORT) || 3000;
-
-app.use('*', cors({
-    origin: (origin) => origin, // Reflect origin to allow all (including dynamic chrome-extension IDs)
-    credentials: true,
-}));
-
-// Mount Custom Auth Routes
-app.route('/oauth/auth', authOAuth);
 
 // Migrations handled by runMigrations() in serve callback or elsewhere
 // console.log('Skipping top-level migration check...');
@@ -61,25 +30,20 @@ app.route('/oauth/auth', authOAuth);
 console.log(`Initializing server on port ${port}...`);
 
 // Initialize Socket.IO
+await runMigrations();
+await WorkflowPersistence.recoverInterrupted();
 const server = serve({
     fetch: app.fetch,
     port,
     hostname: '0.0.0.0'
 }, async (info) => {
-    // Run migrations on startup
-    try {
-        await runMigrations();
-        await repairDatabaseSync();
-    } catch (e) {
-        console.error('Migration or Repair failed:', e);
-    }
     console.log(`Listening on http://${info.address}:${info.port}`);
 });
 console.log('Server initialized.');
 
 const io = new Server(server, {
     cors: {
-        origin: "*",
+        origin: (origin, done) => done(null, !origin || allowedExtensionOrigin(origin)),
         methods: ["GET", "POST"]
     },
     pingTimeout: 120000,      // 120s - double default, prevents disconnects during long ops
@@ -92,7 +56,7 @@ try {
     orchestrator.setServer(io);
     console.log('Orchestrator configured.');
 } catch (err) {
-    console.error('Failed to configure orchestrator:', err);
+    console.error('Failed to configure orchestrator');
 }
 
 
@@ -101,6 +65,8 @@ try {
 // Socket Authentication Middleware
 io.use(async (socket, next) => {
     try {
+        const origin = socket.handshake.headers.origin;
+        if (origin && !allowedExtensionOrigin(origin)) return next(new Error('Unregistered extension origin'));
         const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.split(' ')[1];
 
         if (!token) {
@@ -109,17 +75,19 @@ io.use(async (socket, next) => {
         }
 
         // Verify JWT
-        const jwtSecret = process.env.JWT_SECRET || 'dev-secret-key';
-        const payload = await verify(token, jwtSecret);
+        const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) throw new Error('JWT_SECRET must be configured');
+        const payload = await verify(token, jwtSecret, 'HS256');
         const userId = payload.userId as string;
 
-        if (!userId) {
+        if (!userId || payload.type==='refresh') {
             console.log('Socket connection rejected: Invalid payload');
             return next(new Error('Authentication error - Invalid token payload'));
         }
 
         // Fetch user from DB by ID
         const user = await db.query.users.findFirst({
+            columns: {id:true},
             where: eq(users.id, userId)
         });
 
@@ -129,52 +97,75 @@ io.use(async (socket, next) => {
         }
 
         // Attach user to socket
+        socket.data.expiresAt=Number(payload.exp)*1000;
         (socket as any).user = user;
         next();
     } catch (err) {
-        console.error('Socket connection rejected (JWT/Auth Error):', err);
+        console.error('Socket connection rejected (JWT/Auth Error)');
         next(new Error('Authentication error - Session verification failed'));
     }
 });
 
 io.on('connection', (socket) => {
     const user = (socket as any).user;
-    console.log('Client connected:', socket.id, 'User:', user.email);
 
-    // Join user-specific room so all user's sockets (sidepanel + background) receive events
-    socket.join(`user:${user.id}`);
-    console.log(`Socket ${socket.id} joined room user:${user.id}`);
+    const browser=socket.handshake.auth.role==='browser';
+    socket.use(([event],next)=>{
+        if (Date.now()>=socket.data.expiresAt) {socket.disconnect(true);return;}
+        if (browser && event.startsWith('workflow:')) return next(new Error('Review workflows in the side panel'));
+        next();
+    });
+    if (Number.isFinite(socket.data.expiresAt)) {
+        const expiry=setTimeout(()=>socket.disconnect(true),Math.min(2147483647,socket.data.expiresAt-Date.now()));
+        socket.once('disconnect',()=>clearTimeout(expiry));
+    }
+    socket.join(browser ? `browser:${user.id}` : `user:${user.id}`);
 
+    if (socket.handshake.auth.role !== 'browser') {
+        const restoreReview=async(sessionId?:string)=>{
+            if (sessionId) {
+                if ((await chatService.getSession(sessionId))?.userId!==user.id) return;
+                await socket.join(sessionId);
+            }
+            const [run]=await db.select().from(executions).where(and(eq(executions.userId,user.id),
+                eq(executions.status,'paused'),sessionId ? sql`${executions.context}->>'sessionId'=${sessionId}` : undefined))
+                .orderBy(desc(executions.startedAt)).limit(1);
+            const ctx=run?.context as any;
+            if (!ctx?.review || !run.workflowId) return;
+            const workflow=await db.query.workflows.findFirst({where:and(eq(workflows.id,run.workflowId),eq(workflows.userId,user.id))});
+            if (!workflow) return;
+            if (ctx.sessionId && (await chatService.getSession(ctx.sessionId))?.userId===user.id) await socket.join(ctx.sessionId);
+            const definition=workflow.definition as any;
+            socket.emit(EVENTS_SERVER.WORKFLOW_PLAN,{workflowId:workflow.id,executionId:run.id,status:'paused',approval:ctx.approval,pendingStepId:ctx.review.id,
+                plan:{...workflow,definition:{...definition,steps:definition.steps.map((s:any)=>s.id===ctx.review.id ? ctx.review : s)}}});
+        };
+        void restoreReview().catch(()=>console.error('Failed to restore pending review'));
+        socket.on('session:open',(id:unknown)=>{
+            if (typeof id==='string') void restoreReview(id).catch(()=>console.error('Failed to open chat session'));
+        });
+    }
     // Forward tool execution results from background worker to orchestrator
     // CRITICAL: This was missing before — tool:result events from clients were silently dropped
     // because io.on() only handles 'connection' events, not client-emitted events.
     socket.on('tool:result', (data: any) => {
-        console.log(`[Socket] tool:result from ${socket.id}:`, data.executionId, data.stepId, data.status);
-        orchestrator.handleToolResult(data);
-    });
-
-    // Forward tool acknowledgements (Phase 1 of 2-phase timeout)
-    socket.on('tool:ack', (data: any) => {
-        console.log(`[Socket] tool:ack from ${socket.id}:`, data.executionId, data.stepId);
-        orchestrator.handleToolAck(data);
-    });
-
-    // Forward tool progress heartbeats (extends Phase 2 timeout for long-running tools)
-    socket.on('tool:progress', (data: any) => {
-        console.log(`[Socket] tool:progress from ${socket.id}:`, data.executionId, data.stepId);
-        orchestrator.handleToolProgress(data);
+        if (browser && data && typeof data.executionId==='string' && typeof data.stepId==='string')
+            orchestrator.handleToolResult(user.id,socket.id,data);
     });
 
     socket.on(EVENTS_CLIENT.WORKFLOW_START, async (data: WorkflowStartPayload) => {
-        console.log('Received workflow start request:', data);
 
-        // Safety timeout for entire request (increased to 5 minutes)
+        let expired = false;
         const timeoutHandle = setTimeout(() => {
-            console.error('[TIMEOUT] Request exceeded 5m limit');
-            socket.emit(EVENTS_SERVER.WORKFLOW_ERROR, { error: 'Request timeout - please try again' });
+            expired = true;
+            socket.emit(EVENTS_SERVER.WORKFLOW_ERROR, { error: 'Request timed out. Check workflow history before trying again.' });
         }, 300000);
 
         try {
+            if (!data || typeof data.intent!=='string' || !data.intent.trim() || data.intent.length>200000) throw new Error('Invalid request');
+            if (data.requestId) {
+                const receipt=await pool.query('INSERT INTO workflow_requests(user_id,request_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[user.id,data.requestId]);
+                if (!receipt.rowCount) { clearTimeout(timeoutHandle); return; }
+            }
             // 1. Session & History Initialization (Required for accurate context matching)
             let sessionId = data.sessionId;
             if (!sessionId) {
@@ -186,6 +177,7 @@ io.on('connection', (socket) => {
                 sessionId = session.id;
                 socket.emit('session:created', { sessionId });
             }
+            if ((await chatService.getSession(sessionId))?.userId !== user.id) throw new Error('Chat session unavailable');
             socket.join(sessionId);
 
             // Get conversation history BEFORE classification (do not include current message yet)
@@ -199,9 +191,10 @@ io.on('connection', (socket) => {
             // OPTIMIZATION 1: Quick Match First (with full context)
             console.log('[DEBUG] 0. Running quick intent match...');
             const quickClassification = await intentClassifier.classify(data.intent, conversationHistory, data.modelConfig);
+            if (expired) return;
             console.log('[DEBUG] 0.1. Quick classification:', quickClassification.type);
 
-            if (quickClassification.type === 'conversational' && quickClassification.confidence === 1.0) {
+            if (quickClassification.type === 'conversational' && quickClassification.confidence === 1.0 && /^(?:hi(?: there)?|hello|hey|greetings|thanks|thank you|ok|okay|great|cool)[!.?]*$/i.test(data.intent.trim()) && !data.context?.attachments?.length) {
                 // FAST PATH: Instant greeting response
                 console.log('[DEBUG] Quick greeting detected, skipping heavy checks');
 
@@ -235,7 +228,7 @@ RULES:
             }
 
             // TIER 2: Simple Commands - Direct Execution
-            if (quickClassification.type === 'simple_command' && quickClassification.tool) {
+            if (quickClassification.type === 'simple_command' && quickClassification.tool && !needsApproval(quickClassification.tool, quickClassification.params)) {
                 console.log('[DEBUG] Simple command detected:', quickClassification.tool);
 
                 socket.emit('agent:status', { state: 'executing', message: 'Executing...' });
@@ -274,7 +267,7 @@ RULES:
                     clearTimeout(timeoutHandle);
                     return; // DONE - direct execution complete
                 } catch (error) {
-                    console.error('[ERROR] Simple command execution failed:', error);
+                    console.error('[ERROR] Simple command execution failed');
                     const errorMessage = `❌ Failed: ${(error as Error).message}`;
                     socket.emit('chat:response', { message: errorMessage, sessionId });
                     socket.emit('agent:status', { state: 'error', message: 'Execution failed' });
@@ -288,27 +281,15 @@ RULES:
             socket.emit('agent:status', { state: 'thinking', message: 'Analyzing request...' });
             console.log('[DEBUG] 1. Status emitted');
 
-            // OPTIMIZATION 2: Lazy OAuth - only for workflow intents
-            console.log('[DEBUG] Checking tokens for workflow...');
-            const validUser = await oauthManager.ensureValidToken(user);
-            console.log('[DEBUG] Tokens valid');
-
-            // Context for tools (tokens)
-            const context = {
-                timestamp: new Date(),
-                tokens: {
-                    access_token: validUser.googleAccessToken,
-                    refresh_token: validUser.googleRefreshToken
-                },
-                modelConfig: data.modelConfig
-            };
+            const context = {timestamp:new Date(), modelConfig:data.modelConfig};
 
             // Workflow planning
             socket.emit('agent:status', { state: 'planning', message: 'Designing workflow...' });
 
-            const workflowIntent = quickClassification.workflowIntent || data.intent;
-            const workflow = await orchestrator.plan(workflowIntent, user, sessionId, data.modelConfig);
+            const workflowIntent = data.intent;
+            const workflow = await orchestrator.plan(workflowIntent, user, sessionId, data.modelConfig, data.context?.form, Array.isArray(data.context?.attachments) ? data.context.attachments.filter((a:unknown)=>typeof a==='string').slice(0,10) : undefined);
 
+            if (expired) return;
             // TIER 3.5: Direct Response Check
             // If the AI determined it can answer directly without any steps, we skip the workflow
             if (workflow.definition.directResponse && (!workflow.definition.steps || workflow.definition.steps.length === 0)) {
@@ -353,35 +334,41 @@ RULES:
                 })),
                 context: {
                     ...context,
-                    sessionId: sessionId
+                    sessionId: sessionId, browserTarget: data.context?.browserTarget
                 },
                 result: undefined,
                 error: undefined
             };
 
             // Store workflow for resume capability
-            (execution as any)._workflow = workflow;
 
             // Execute with approval required based on AI planning
-            orchestrator.execute(execution, workflow, workflow.definition.requiresApproval).catch(err => {
-                console.error('Execution error:', err);
+            if (expired) return;
+            orchestrator.execute(execution, workflow, workflow.definition.requiresApproval, data.modelConfig).catch(err => {
+                console.error('Execution error');
                 socket.emit('agent:status', { state: 'error', message: 'Execution failed' });
             });
 
             clearTimeout(timeoutHandle);
         } catch (error) {
             clearTimeout(timeoutHandle);
-            console.error('Workflow start failed:', error);
+            console.error('Workflow start failed',socket.id);
             socket.emit(EVENTS_SERVER.WORKFLOW_ERROR, { error: `Failed to start: ${(error as Error).message}` });
         }
     });
 
-    socket.on(EVENTS_CLIENT.WORKFLOW_RESUME, async (data: WorkflowResumePayload) => {
-        console.log('Received workflow resume request:', data);
+    socket.on(EVENTS_CLIENT.WORKFLOW_CANCEL,async (data)=>{
         try {
-            await orchestrator.resume(data.executionId, data.approved, data.modelConfig);
+            if (typeof data?.executionId !== 'string') throw new Error('Invalid execution');
+            await orchestrator.cancel(data.executionId,user.id);
+        }
+        catch {socket.emit(EVENTS_SERVER.WORKFLOW_ERROR,{error:'No cancellable workflow'});}
+    });
+    socket.on(EVENTS_CLIENT.WORKFLOW_RESUME, async (data: WorkflowResumePayload) => {
+        try {
+            await orchestrator.resume(data.executionId, user.id, data.approved, data.approval, data.modelConfig, data.revised);
         } catch (error) {
-            console.error('Workflow resume failed:', error);
+            console.error('Workflow resume failed',socket.id);
             socket.emit(EVENTS_SERVER.WORKFLOW_ERROR, { error: `Failed to resume: ${(error as Error).message}` });
         }
     });
@@ -389,75 +376,6 @@ RULES:
     socket.on('disconnect', () => {
         console.log('Client disconnected:', socket.id);
     });
-});
-
-// DEBUG: Temporary endpoints to troubleshoot migration failure
-app.get('/api/debug/info', async (c) => {
-    try {
-        const { fileURLToPath } = await import('url');
-        const { dirname, resolve } = await import('path');
-        const { readdir } = await import('fs/promises');
-
-        const __filename = fileURLToPath(import.meta.url);
-        const __dirname = dirname(__filename);
-        const migrationsPath = resolve(__dirname, '../migrations'); // assuming dist/index.js -> dist/../migrations = migrations
-
-        let files: string[] = [];
-        try {
-            files = await readdir(migrationsPath);
-        } catch (e) {
-            files = [`Error reading dir: ${(e as Error).message}`];
-        }
-
-        return c.json({
-            cwd: process.cwd(),
-            __dirname,
-            migrationsPath,
-            files
-        });
-    } catch (e) {
-        return c.json({ error: (e as Error).message }, 500);
-    }
-});
-
-app.post('/api/debug/force-sync', async (c) => {
-    try {
-        const sql = `
-            CREATE TABLE IF NOT EXISTS "chat_sessions" (
-                "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                "user_id" UUID REFERENCES "users"("id") ON DELETE CASCADE,
-                "title" TEXT NOT NULL DEFAULT 'New Chat',
-                "created_at" TIMESTAMP DEFAULT NOW(),
-                "updated_at" TIMESTAMP DEFAULT NOW()
-            );
-
-            CREATE TABLE IF NOT EXISTS "chat_messages" (
-                "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                "session_id" UUID REFERENCES "chat_sessions"("id") ON DELETE CASCADE,
-                "role" TEXT NOT NULL,
-                "content" TEXT NOT NULL,
-                "metadata" JSONB,
-                "created_at" TIMESTAMP DEFAULT NOW()
-            );
-        `;
-        // Execute raw SQL using Drizzle's db instance if it exposes execute, or raw client
-        // Using the pg client directly via db session if possible, or just re-importing pool
-        // Since we don't have direct access to pool here easily, let's use db.execute if using postgresjs or aws-data-api, 
-        // but for node-postgres it's usually db.execute(sql`...`). 
-        // Let's assume db.execute works with sql template tag.
-
-        // Actually, db.execute is for prepared statements. 
-        // Let's try to import the pool or just use a new client for this debug hack.
-
-        const { Pool } = await import('pg');
-        const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-        await pool.query(sql);
-        await pool.end();
-
-        return c.json({ status: 'Tables created manually' });
-    } catch (e) {
-        return c.json({ error: (e as Error).message }, 500);
-    }
 });
 
 // REST Routes
@@ -470,10 +388,7 @@ app.get('/api/history', authMiddleware, async (c) => {
             where: eq(executions.userId, userId as any),
             orderBy: (executions, { desc }) => [desc(executions.startedAt)],
             limit: 20,
-            with: {
-                // @ts-ignore
-                workflow: true
-            }
+
         });
 
         // Manual join if relation not set up in schema types correctly, but let's assume it works or try safe fallback
@@ -491,7 +406,7 @@ app.get('/api/history', authMiddleware, async (c) => {
             } else {
                 // Fallback fetch
                 const wf = await db.query.workflows.findFirst({
-                    where: eq(workflows.id, exec.workflowId as any)
+                    where: and(eq(workflows.id, exec.workflowId as any),eq(workflows.userId,user.id))
                 });
                 if (wf) {
                     workflowName = wf.intent;
@@ -507,9 +422,9 @@ app.get('/api/history', authMiddleware, async (c) => {
                 stepsCount
             };
         }));
-
+        return c.json(history);
     } catch (error) {
-        console.error('History fetch error:', error);
+        console.error('History fetch error');
         return c.json({ error: 'Internal Server Error' }, 500);
     }
 });
@@ -521,21 +436,22 @@ app.get('/api/chat/sessions', authMiddleware, async (c) => {
         const sessions = await chatService.getSessions(userId);
         return c.json(sessions);
     } catch (error) {
-        console.error('Chat sessions fetch error:', error);
+        console.error('Chat sessions fetch error');
         return c.json({ error: 'Internal Server Error' }, 500);
     }
 });
 
-app.get('/api/chat/sessions/:sessionId', async (c) => {
+app.get('/api/chat/sessions/:sessionId', authMiddleware, async (c) => {
     try {
         const authHeader = c.req.header('Authorization');
         if (!authHeader) return c.json({ error: 'Unauthorized' }, 401);
 
         const sessionId = c.req.param('sessionId');
+        if ((await chatService.getSession(sessionId))?.userId !== c.get('user').id) return c.json({ error: 'Session unavailable' }, 404);
         const messages = await chatService.getMessages(sessionId);
         return c.json(messages);
     } catch (error) {
-        console.error('Chat messages fetch error:', error);
+        console.error('Chat messages fetch error');
         return c.json({ error: 'Internal Server Error' }, 500);
     }
 });
@@ -547,7 +463,7 @@ app.post('/api/chat/sessions', authMiddleware, async (c) => {
         const session = await chatService.createSession(userId);
         return c.json(session);
     } catch (error) {
-        console.error('Create chat session error:', error);
+        console.error('Create chat session error');
         return c.json({ error: 'Internal Server Error' }, 500);
     }
 });

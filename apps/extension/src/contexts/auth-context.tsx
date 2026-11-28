@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { getApiUrl } from '../lib/api';
 
 
@@ -28,6 +28,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // API_URL removed in favor of dynamic getApiUrl() in signIn method
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const loginPopup=useRef<Window|null>(null);
+  const loginOrigin=useRef('');
   const [user, setUser] = useState<User | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -36,19 +38,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Load auth state from storage on mount
     chrome.storage.local.get(['user', 'accessToken'], (result) => {
       if (result.user && result.accessToken) {
+        void chrome.storage.local.set({extenda_model_owner:result.user.id});
         setUser(result.user);
         setAccessToken(result.accessToken);
       }
       setIsLoaded(true);
     });
 
+    const syncAccount=(changes:Record<string,chrome.storage.StorageChange>,area:string)=>{
+      if(area==='local' && ('user' in changes || 'accessToken' in changes)){
+        void chrome.storage.local.get(['user','accessToken']).then(result=>{
+          setUser(result.user && result.accessToken ? result.user : null);
+          setAccessToken(result.user ? result.accessToken || null : null);
+        });
+      }
+    };
+    chrome.storage.onChanged.addListener(syncAccount);
+
     // Listen for OAuth messages from the popup
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'oauth_success') {
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.origin===loginOrigin.current && loginPopup.current && event.source===loginPopup.current && event.data?.type === 'oauth_success' && event.data.tokens?.accessToken) {
         const { user, tokens } = event.data;
+        loginPopup.current=null;
+        const modelKeys=['extenda_provider_keys','extenda_active_provider','extenda_default_models','extenda_ollama_url'];
+        const savedKey='extenda_models_'+user.id;
+        const existing=await chrome.storage.local.get(['extenda_model_owner','user',savedKey,...modelKeys]);
+        const previous=existing.extenda_model_owner || existing.user?.id;
+        const update:Record<string,unknown>={user,accessToken:tokens.accessToken,extenda_model_owner:user.id};
+        if (previous!==user.id) {
+          if (previous) update['extenda_models_'+previous]=Object.fromEntries(modelKeys.map(k=>[k,existing[k] ?? null]));
+          for (const key of modelKeys) update[key]=existing[savedKey]?.[key] ?? null;
+        }
+        await chrome.storage.local.set(update);
         setUser(user);
         setAccessToken(tokens.accessToken);
-        chrome.storage.local.set({ user, accessToken: tokens.accessToken });
       }
     };
 
@@ -68,6 +91,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     return () => {
+      chrome.storage.onChanged.removeListener(syncAccount);
       window.removeEventListener('message', handleMessage);
       if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
         chrome.runtime.onMessage.removeListener(handleChromeMessage);
@@ -83,10 +107,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const dynamicApiUrl = await getApiUrl();
     const cacheBuster = Date.now();
-    const popupUrl = `${dynamicApiUrl}/oauth/auth/${provider}?cb=${cacheBuster}`;
+    const popupUrl = `${dynamicApiUrl}/oauth/auth/${provider}?cb=${cacheBuster}&origin=${encodeURIComponent(window.location.origin)}`;
     console.log(`[Auth] Opening popup: ${popupUrl}`);
 
-    window.open(
+    loginOrigin.current=new URL(dynamicApiUrl).origin;
+    loginPopup.current=window.open(
       popupUrl,
       'extenda_auth',
       `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes,toolbar=no,menubar=no,location=no`

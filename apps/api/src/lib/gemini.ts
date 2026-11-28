@@ -37,7 +37,7 @@ if (API_KEY) {
 
 export const generateText = async (prompt: string): Promise<string> => {
     if (!model) {
-        console.log('[MOCK AI] Generating response for:', prompt);
+        console.log('[MOCK AI] Generating fixture response');
         return JSON.stringify({
             steps: [
                 { id: '1', type: 'tool', description: 'Mock Step 1 using ' + prompt },
@@ -65,13 +65,13 @@ export const generateText = async (prompt: string): Promise<string> => {
         console.log('[Gemini] Response received, length:', text.length);
 
         if (!text || text.trim().length === 0) {
-            console.error('[Gemini] Empty response received. Prompt preview:', prompt.substring(0, 200));
+            console.error('[Gemini] Empty response received');
             throw new Error('Gemini returned empty response');
         }
 
         return text;
     } catch (error: any) {
-        console.error('[Gemini] API Error:', error.message || error);
+        console.error('[Gemini] Request failed');
         if (error.message?.includes('model output must contain')) {
             console.error('[Gemini] Safety filters may have blocked the response');
             // Return a fallback response instead of failing

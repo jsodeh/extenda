@@ -12,7 +12,7 @@ interface ApprovalGateProps {
     step: WorkflowStep;
     onApprove: () => void;
     onReject: () => void;
-    onEdit: (params: Record<string, any>) => void;
+    onEdit?: (params: Record<string, any>) => void;
 }
 
 export default function ApprovalGate({ step, onApprove, onReject, onEdit }: ApprovalGateProps) {
@@ -23,8 +23,15 @@ export default function ApprovalGate({ step, onApprove, onReject, onEdit }: Appr
         setEditedParams(prev => ({ ...prev, [key]: value }));
     };
 
+    const [error,setError] = useState('');
     const handleSave = () => {
-        onEdit(editedParams);
+        try {
+            const parsed=Object.fromEntries(Object.entries(editedParams).map(([key,value]) => {
+                if (typeof value === 'string' && typeof step.params?.[key] !== 'string') return [key,JSON.parse(value)];
+                return [key,value];
+            }));
+            onEdit?.(parsed);
+        } catch { setError('Enter valid JSON for structured fields'); return; }
         setIsEditing(false);
     };
 
@@ -66,7 +73,7 @@ export default function ApprovalGate({ step, onApprove, onReject, onEdit }: Appr
                         <div className="space-y-3">
                             <div className="flex items-center justify-between">
                                 <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Parameters</h4>
-                                {!isEditing && (
+                                {onEdit && !isEditing && (
                                     <button
                                         onClick={() => setIsEditing(true)}
                                         className="flex items-center gap-1.5 text-xs font-medium text-primary hover:opacity-80 transition-opacity"
@@ -86,7 +93,7 @@ export default function ApprovalGate({ step, onApprove, onReject, onEdit }: Appr
                                         {isEditing ? (
                                             <input
                                                 type="text"
-                                                value={String(value)}
+                                                value={typeof value === 'object' ? JSON.stringify(value) : String(value)}
                                                 onChange={(e) => handleParamChange(key, e.target.value)}
                                                 className="w-full rounded-lg border-2 border-border bg-background px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none transition-all"
                                             />
@@ -99,6 +106,7 @@ export default function ApprovalGate({ step, onApprove, onReject, onEdit }: Appr
                                 ))}
                             </div>
 
+                            {error && <p role="alert">{error}</p>}
                             {isEditing && (
                                 <div className="flex gap-2 pt-2">
                                     <button

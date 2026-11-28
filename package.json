@@ -7,7 +7,7 @@
         "dev": "turbo run dev",
         "lint": "turbo run lint",
         "clean": "turbo run clean",
-        "db:migrate": "turbo run db:migrate",
+        "db:migrate": "pnpm --filter api run migrate",
         "format": "prettier --write \"**/*.{ts,tsx,md}\""
     },
     "devDependencies": {

@@ -2,6 +2,7 @@ import { Tool } from '@extenda/shared';
 import { TabManager } from './definitions/tab-manager.js';
 import { DOMReaderTool, GmailScraperTool } from './definitions/content-tools.js';
 import { FormFillerTool, NotifierTool } from './definitions/base-tools.js';
+import { FormAnswersTool } from './form-answers.js';
 import { AIProcessorTool } from './ai-processor.js';
 
 export class ToolRegistry {
@@ -39,3 +40,4 @@ toolRegistry.register(GmailScraperTool);
 toolRegistry.register(FormFillerTool);
 toolRegistry.register(NotifierTool);
 toolRegistry.register(AIProcessorTool);
+toolRegistry.register(FormAnswersTool);

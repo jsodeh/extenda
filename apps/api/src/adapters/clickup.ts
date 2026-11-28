@@ -91,7 +91,7 @@ export class ClickUpAdapter extends BaseAdapter {
     actions = ACTIONS;
 
     async execute(actionName: string, params: any, context: any): Promise<any> {
-        const token = process.env.CLICKUP_API_TOKEN;
+        const token = context.tokens?.access_token || (context.userId && context.userId === process.env.INTEGRATION_CREDENTIAL_OWNER ? process.env.CLICKUP_API_TOKEN : undefined);
         const api = axios.create({
             baseURL: 'https://api.clickup.com/api/v2',
             headers: {

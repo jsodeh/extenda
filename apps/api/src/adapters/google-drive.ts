@@ -96,7 +96,7 @@ export class GoogleDriveAdapter extends BaseAdapter {
     async execute(actionName: string, params: any, context: any): Promise<any> {
         const auth = new google.auth.OAuth2(
             process.env.GOOGLE_CLIENT_ID,
-            process.env.GOOGLE_AUTH_CLIENT_SECRET,
+            process.env.GOOGLE_AUTH_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET,
             process.env.GOOGLE_AUTH_REDIRECT_URI
         );
 
@@ -104,7 +104,7 @@ export class GoogleDriveAdapter extends BaseAdapter {
             auth.setCredentials(context.tokens);
         }
 
-        const drive = google.drive({ version: 'v3', auth });
+        const drive = google.drive({ version: 'v3', auth, timeout: 20000 });
 
         switch (actionName) {
             case 'list_files':

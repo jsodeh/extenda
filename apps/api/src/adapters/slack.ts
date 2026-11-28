@@ -117,7 +117,7 @@ export class SlackAdapter extends BaseAdapter {
     async execute(actionName: string, params: any, context: any): Promise<any> {
         // TODO: Retrieve token from context/DB
         // const token = context.tokens?.access_token || process.env.SLACK_BOT_TOKEN;
-        const token = process.env.SLACK_BOT_TOKEN;
+        const token = context.tokens?.access_token || (context.userId && context.userId === process.env.INTEGRATION_CREDENTIAL_OWNER ? process.env.SLACK_BOT_TOKEN : undefined);
 
         if (!token) {
             console.warn('No Slack token provided');

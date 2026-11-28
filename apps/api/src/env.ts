@@ -8,7 +8,6 @@ const __dirname = dirname(__filename);
 
 // Load .env relative to the 'src' directory
 const envPath = resolve(__dirname, '../.env');
-dotenv.config({ path: envPath });
-
-console.log('✅ Environment loaded from:', envPath);
-console.log('Environment:', process.env.NODE_ENV);
+if (process.env.NODE_ENV !== 'test' && !process.env.TEST_DATABASE_URL) {
+    dotenv.config({ path: envPath });
+}

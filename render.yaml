@@ -4,15 +4,19 @@ services:
     runtime: node
     plan: free # Free tier as requested
     region: ohio # Default
-    buildCommand: pnpm install && pnpm run build
-    startCommand: pnpm run start
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @extenda/shared build && pnpm --filter api build
+    startCommand: pnpm --filter api start
     envVars:
+      - key: NODE_VERSION
+        value: "22"
       - key: PORT
         value: 10000
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
         sync: false # Set manually in dashboard
+      - key: EXTENSION_ORIGINS
+        sync: false
       - key: JWT_SECRET
         sync: false # Set manually in dashboard
       - key: ENCRYPTION_KEY
@@ -27,4 +31,31 @@ services:
         sync: false
       - key: GOOGLE_AUTH_REDIRECT_URI
         sync: false
-    healthCheckPath: /api/debug/info # Updated based on index.ts
+      - key: LINKEDIN_CLIENT_ID
+        sync: false
+      - key: LINKEDIN_CLIENT_SECRET
+        sync: false
+      - key: LINKEDIN_INTEGRATION_REDIRECT_URI
+        sync: false
+    healthCheckPath: /health
+  - type: cron
+    name: extenda-scheduler
+    runtime: node
+    schedule: "* * * * *"
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @extenda/shared build && pnpm --filter api build
+    startCommand: node apps/api/dist/scripts/run-scheduler.js
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: LINKEDIN_CLIENT_ID
+        sync: false
+      - key: LINKEDIN_CLIENT_SECRET
+        sync: false

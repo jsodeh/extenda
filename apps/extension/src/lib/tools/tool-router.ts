@@ -1,3 +1,4 @@
+import { privateRequest } from '../api';
 /**
  * Unified Tool Router
  * Single source of truth for ALL tools - used by both text orchestrator and Gemini Live voice
@@ -136,12 +137,12 @@ export const TOOL_DECLARATIONS: ToolDeclaration[] = [
             type: 'object',
             properties: {
                 title: { type: 'string', description: 'Event title' },
-                start: { type: 'string', description: 'Start time (ISO format or natural language)' },
-                end: { type: 'string', description: 'End time (ISO format or natural language)' },
+                start: { type: 'string', description: 'Start time (ISO 8601 with timezone offset)' },
+                end: { type: 'string', description: 'End time (ISO 8601 with timezone offset)' },
                 description: { type: 'string', description: 'Event description' },
                 location: { type: 'string', description: 'Event location' }
             },
-            required: ['title', 'start']
+            required: ['title', 'start', 'end']
         }
     },
     {
@@ -232,7 +233,20 @@ export async function executeTool(
     args: Record<string, any>,
     context: ToolExecutionContext
 ): Promise<any> {
-    console.log(`[ToolRouter] Executing ${name}:`, args);
+    if (['smart_click','fill_form','screenshot','read_page','close_tab'].includes(name)) {
+        const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
+        if (!tab?.id || !tab.url || !/^https?:/.test(tab.url)) throw new Error('Select a supported page');
+        args={...args,tabId:tab.id,targetUrl:tab.url};
+    }
+    if (name === 'fill_form') {
+        const { result, error } = await chrome.runtime.sendMessage({type:'EXECUTE_TOOL', tool:'DOMReader', params:{
+            action:'form_identity',selectors:[args.selector],tabId:args.tabId,targetUrl:args.targetUrl
+        }});
+        if (error || !Array.isArray(result)) throw new Error('Inspect the intended form before approval');
+        args = {...args, reviewedFields:result};
+    }
+    if (['smart_click','fill_form','close_tab','open_tab','screenshot','read_page','list_tabs','get_emails','get_calendar_events','search_drive'].includes(name)
+        && !window.confirm(`Approve ${name} for this Gemini voice session?\n${JSON.stringify(args, null, 2)}`)) throw new Error('Action declined');
 
     // Handle instant tools
     if (name === 'get_current_time') {
@@ -256,14 +270,14 @@ async function executeClientTool(name: string, args: Record<string, any>): Promi
     // Map tool names to existing handlers
     const toolMapping: Record<string, { handler: string; params: any }> = {
         'open_tab': { handler: 'TabManager', params: { action: 'open', url: args.url } },
-        'close_tab': { handler: 'TabManager', params: { action: 'close' } },
-        'switch_tab': { handler: 'TabManager', params: { action: 'switch', ...args } },
+        'close_tab': { handler: 'TabManager', params: { action: 'close',tabId:args.tabId,targetUrl:args.targetUrl } },
+        'switch_tab': { handler: 'TabManager', params: { ...args, action: 'switch' } },
         'list_tabs': { handler: 'TabManager', params: { action: 'list' } },
         'smart_click': { handler: 'SmartClick', params: args },
-        'screenshot': { handler: 'Screenshot', params: {} },
-        'read_page': { handler: 'DOMReader', params: { action: 'read', ...args } },
-        'fill_form': { handler: 'FormFiller', params: { action: 'fill', fields: [args] } },
-        'notify': { handler: 'Notifier', params: { action: 'notify', ...args } }
+        'screenshot': { handler: 'Screenshot', params: args },
+        'read_page': { handler: 'DOMReader', params: { ...args, action: 'extract_text' } },
+        'fill_form': { handler: 'FormFiller', params: { ...args, action: 'fill_text' } },
+        'notify': { handler: 'Notifier', params: { ...args, action: 'notify' } }
     };
 
     const mapping = toolMapping[name];
@@ -296,36 +310,12 @@ async function executeServerTool(
     args: Record<string, any>,
     context: ToolExecutionContext
 ): Promise<any> {
-    const apiUrl = context.apiUrl || 'https://extenda-pxa6.onrender.com';
-
-    // Map tool names to API endpoints
-    const endpointMapping: Record<string, { endpoint: string; method: string }> = {
-        'send_email': { endpoint: '/api/tools/gmail/send', method: 'POST' },
-        'get_emails': { endpoint: '/api/tools/gmail/list', method: 'GET' },
-        'create_calendar_event': { endpoint: '/api/tools/calendar/create', method: 'POST' },
-        'get_calendar_events': { endpoint: '/api/tools/calendar/list', method: 'GET' },
-        'search_drive': { endpoint: '/api/tools/drive/search', method: 'GET' }
-    };
-
-    const mapping = endpointMapping[name];
-    if (!mapping) {
-        throw new Error(`No server mapping for tool: ${name}`);
-    }
-
-    const response = await fetch(`${apiUrl}${mapping.endpoint}`, {
-        method: mapping.method,
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${context.accessToken}`
-        },
-        body: mapping.method === 'POST' ? JSON.stringify(args) : undefined
-    });
-
-    if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`API error: ${error}`);
-    }
-
+    let params=args;
+    if (name==='create_calendar_event') params={...args,summary:args.title};
+    if (name==='get_emails') params={maxResults:args.count || 5,q:args.query};
+    if (name==='get_calendar_events') params={timeMin:new Date().toISOString(),timeMax:new Date(Date.now()+(args.days || 7)*86400000).toISOString()};
+    if (name==='search_drive') params={q:"trashed = false and fullText contains '"+String(args.query).replace(/['\\]/g,"\\$&")+"'"};
+    const response=await privateRequest('/api/voice-tools/'+name,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({params,sessionId:context.sessionId})});
     return response.json();
 }
 

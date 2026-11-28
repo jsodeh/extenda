@@ -97,7 +97,7 @@ export class GmailAdapter extends BaseAdapter {
     async execute(actionName: string, params: any, context: any): Promise<any> {
         // Unified Standard: Correlate with Render environment variables
         const clientId = process.env.GOOGLE_CLIENT_ID;
-        const clientSecret = process.env.GOOGLE_AUTH_CLIENT_SECRET;
+        const clientSecret = process.env.GOOGLE_AUTH_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET;
         const redirectUri = process.env.GOOGLE_AUTH_REDIRECT_URI;
 
         if (!clientId || !clientSecret) {
@@ -119,7 +119,7 @@ export class GmailAdapter extends BaseAdapter {
             throw new Error('Authentication Error: No Google access token available for this session.');
         }
 
-        const gmail = google.gmail({ version: 'v1', auth });
+        const gmail = google.gmail({ version: 'v1', auth, timeout: 20000 });
 
         switch (actionName) {
             case 'list_emails':
@@ -139,19 +139,13 @@ export class GmailAdapter extends BaseAdapter {
                 };
                 if (query && query.length > 0) listParams.q = query;
 
-                console.log('[GmailAdapter] Full Request Body:', JSON.stringify(listParams));
 
                 let listRes;
                 try {
                     // Explicitly bind the auth to ensure no context loss
                     listRes = await gmail.users.messages.list(listParams);
                 } catch (apiError: any) {
-                    console.error('[GmailAdapter] Google API Error:', {
-                        message: apiError.message,
-                        status: apiError.status,
-                        errors: apiError.response?.data?.error || apiError.errors,
-                        code: apiError.code
-                    });
+                    console.error('Gmail request failed',apiError.status);
                     throw new Error(`Gmail API Error: ${apiError.message || 'invalid_request'}`);
                 }
 
@@ -182,7 +176,6 @@ export class GmailAdapter extends BaseAdapter {
                             date
                         };
                     } catch (e) {
-                        console.warn(`Failed to fetch details for message ${msg.id}`, e);
                         return { id: msg.id, error: 'Failed to load details' };
                     }
                 }));
@@ -227,7 +220,6 @@ export class GmailAdapter extends BaseAdapter {
                         .replace(/\//g, '_')
                         .replace(/=+$/, '');
 
-                    console.log(`[GmailAdapter] Sending email to ${params.to}, subject: "${params.subject}"`);
 
                     const sendRes = await gmail.users.messages.send({
                         userId: 'me',
@@ -255,7 +247,6 @@ export class GmailAdapter extends BaseAdapter {
                         message: `Email sent to ${params.to}`
                     };
                 } catch (error: any) {
-                    console.error('[GmailAdapter] Email send failed:', error);
 
                     // Provide user-friendly error messages for common failures
                     if (error.code === 403) {

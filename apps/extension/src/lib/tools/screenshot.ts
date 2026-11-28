@@ -2,12 +2,20 @@
  * Screenshot Tool - Capture visible tab
  */
 
-export async function captureScreenshot(): Promise<string> {
+export interface BrowserTarget { tabId?: number; targetUrl?: string }
+export async function assertVisible(target: BrowserTarget) {
+    const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
+    if (!target.tabId || tab?.id !== target.tabId || tab.url !== target.targetUrl) throw new Error('Target tab changed. Review the intended page.');
+    return tab;
+}
+export async function captureScreenshot(target: BrowserTarget): Promise<string> {
     try {
-        const dataUrl = await chrome.tabs.captureVisibleTab(null as any, {
+        const tab=await assertVisible(target);
+        const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
             format: 'png',
             quality: 90
         });
+        await assertVisible(target);
         return dataUrl;
     } catch (error: any) {
         throw new Error(`Screenshot failed: ${error.message}`);
@@ -17,8 +25,8 @@ export async function captureScreenshot(): Promise<string> {
 /**
  * Capture screenshot and return as base64 without data URL prefix
  */
-export async function captureScreenshotBase64(): Promise<string> {
-    const dataUrl = await captureScreenshot();
+export async function captureScreenshotBase64(target: BrowserTarget): Promise<string> {
+    const dataUrl = await captureScreenshot(target);
     // Remove "data:image/png;base64," prefix
     return dataUrl.replace(/^data:image\/\w+;base64,/, '');
 }
@@ -30,9 +38,9 @@ export interface ScreenshotResult {
     error?: string;
 }
 
-export async function handleScreenshot(params: { format?: 'dataUrl' | 'base64' }): Promise<ScreenshotResult> {
+export async function handleScreenshot(params: BrowserTarget & { format?: 'dataUrl' | 'base64' }): Promise<ScreenshotResult> {
     try {
-        const dataUrl = await captureScreenshot();
+        const dataUrl = await captureScreenshot(params);
 
         if (params.format === 'base64') {
             return {

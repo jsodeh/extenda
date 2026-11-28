@@ -28,6 +28,7 @@ export const EVENTS_SERVER = {
 
 // Types for Event Payloads
 export interface WorkflowStartPayload {
+    requestId?: string;
     intent: string;
     context: SessionContext;
     sessionId?: string;
@@ -35,6 +36,8 @@ export interface WorkflowStartPayload {
 }
 
 export interface WorkflowResumePayload {
+    approval: string;
+    revised?: Record<string, unknown>;
     executionId: string;
     approved: boolean;
     modelConfig?: ModelConfig;
