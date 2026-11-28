@@ -1,3 +1,4 @@
+import { oauthManager } from '../services/oauth-manager.js';
 import { linkedAccount, queuePost, saveDraft, drafts } from '../services/linkedin.js';
 import { executeDueJobs } from '../services/scheduler.js';
 import { pool } from '../db/index.js';
@@ -119,14 +120,15 @@ export class LinkedInAdapter extends BaseAdapter {
             return receipt.result;
         }
         if (action === 'delete_post') {
-            const account = await linkedAccount(owner);
-            if (!account || !context.approval) throw new Error('Review LinkedIn deletion');
-            const res = await fetch('https://api.linkedin.com/v2/ugcPosts/' + encodeURIComponent(params.postId), {
-                method: 'DELETE',
-                headers: { Authorization: 'Bearer ' + account.token, 'X-Restli-Protocol-Version': '2.0.0' }
+            if (!context.approval) throw new Error('Review LinkedIn deletion');
+            return oauthManager.withGrant(owner,'linkedin',params.accountBinding, async grant => {
+                const res = await fetch('https://api.linkedin.com/v2/ugcPosts/' + encodeURIComponent(params.postId), {
+                    method:'DELETE', headers:{ Authorization:'Bearer '+grant.accessToken, 'X-Restli-Protocol-Version':'2.0.0' },
+                    signal:AbortSignal.timeout(20000)
+                });
+                if (!res.ok) throw new Error('LinkedIn rejected deletion');
+                return {deleted:params.postId};
             });
-            if (!res.ok) throw new Error('LinkedIn rejected deletion');
-            return { deleted: params.postId };
         }
         throw new Error('Unknown LinkedIn action');
     }

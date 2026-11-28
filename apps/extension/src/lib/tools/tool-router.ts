@@ -238,6 +238,13 @@ export async function executeTool(
         if (!tab?.id || !tab.url || !/^https?:/.test(tab.url)) throw new Error('Select a supported page');
         args={...args,tabId:tab.id,targetUrl:tab.url};
     }
+    if (name === 'fill_form') {
+        const { result, error } = await chrome.runtime.sendMessage({type:'EXECUTE_TOOL', tool:'DOMReader', params:{
+            action:'form_identity',selectors:[args.selector],tabId:args.tabId,targetUrl:args.targetUrl
+        }});
+        if (error || !Array.isArray(result)) throw new Error('Inspect the intended form before approval');
+        args = {...args, reviewedFields:result};
+    }
     if (['smart_click','fill_form','close_tab','open_tab','screenshot','read_page','list_tabs','get_emails','get_calendar_events','search_drive'].includes(name)
         && !window.confirm(`Approve ${name} for this Gemini voice session?\n${JSON.stringify(args, null, 2)}`)) throw new Error('Action declined');
 

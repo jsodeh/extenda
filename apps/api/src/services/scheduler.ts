@@ -1,4 +1,4 @@
-import { linkedAccount, publishPost, ProviderFailure } from './linkedin.js';
+import { publishPost, ProviderFailure } from './linkedin.js';
 import { pool } from '../db/index.js';
 import { instant, validTimezone } from '../lib/scheduling.js';
 import { GoogleCalendarAdapter } from '../adapters/google-calendar.js';
@@ -57,29 +57,19 @@ export async function executeDueJobs(limit = 40, onlyId?: string) {
                 );
                 result = { message: job.approved_payload.message };
             } else if (job.action === 'linkedin') {
-                const account = await linkedAccount(job.user_id);
-                if (!account || account.author !== job.approved_payload.author)
-                    throw new ProviderFailure('Reconnect the approved LinkedIn account or publish manually', 403);
-                externalStarted = true;
-                result = await publishPost(job.approved_payload, account.token);
+                result = await oauthManager.withGrant(job.user_id,'linkedin',job.approved_payload.accountBinding, async grant => {
+                    if ('urn:li:person:'+grant.metadata?.sub !== job.approved_payload.author ||
+                        !grant.scope?.split(/[ ,]+/).includes('w_member_social'))
+                        throw new ProviderFailure('Reconnect the approved account and review the post again',403);
+                    externalStarted = true;
+                    return publishPost(job.approved_payload,grant.accessToken);
+                });
             } else {
-                const {
-                    rows: [user]
-                } = await pool.query('SELECT google_access_token,google_refresh_token FROM users WHERE id=$1', [
-                    job.user_id
-                ]);
-                let credentials = await oauthManager.getCredentials(job.user_id, 'google');
-                if (credentials && oauthManager.isTokenExpired(credentials.expiresAt))
-                    credentials = await oauthManager.refreshToken(job.user_id, 'google');
-                const tokens = {
-                    access_token: credentials?.accessToken || user?.google_access_token,
-                    refresh_token: credentials?.refreshToken || user?.google_refresh_token
-                };
-                if (!tokens.access_token && !tokens.refresh_token) throw new Error('Reconnect Google Calendar');
-                externalStarted = true;
-                result = await new GoogleCalendarAdapter().execute('create_event', job.approved_payload, {
-                    tokens,
-                    idempotencyKey: job.id
+                result = await oauthManager.withGrant(job.user_id,'google',job.approved_payload.accountBinding, async grant => {
+                    externalStarted = true;
+                    return new GoogleCalendarAdapter().execute('create_event', job.approved_payload, {
+                        tokens:{access_token:grant.accessToken}, idempotencyKey:job.id
+                    });
                 });
             }
             // Advance from the approved local wall clock. Skip missed occurrences after downtime.
@@ -108,7 +98,7 @@ export async function executeDueJobs(limit = 40, onlyId?: string) {
             }
             const message = externalStarted
                 ? 'Check provider history before retrying'
-                : 'Delivery failed. Check account connection.';
+                : 'Delivery stopped. Reconnect the provider and review a new scheduled action.';
             await pool.query("UPDATE scheduled_jobs SET status=$2,result=$3 WHERE id=$1 AND status='running' AND attempts=$4", [
                 job.id,
                 externalStarted ? 'uncertain' : 'failed',

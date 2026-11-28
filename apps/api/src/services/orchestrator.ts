@@ -304,7 +304,7 @@ export class AgentOrchestrator {
         await this.runWorkflowLoop(execution, workflow, undefined, modelConfig);
     }
 
-    async resume(executionId: string, owner: string, approved: boolean, digest: string, modelConfig?: ModelConfig, tokens?: any, revised?: Record<string, unknown>) {
+    async resume(executionId: string, owner: string, approved: boolean, digest: string, modelConfig?: ModelConfig, revised?: Record<string, unknown>) {
         console.log(`Resuming execution ${executionId}, approved: ${approved}`);
         const dbExecution = await db.query.executions.findFirst({
             where: and(eq(executions.id, executionId), eq(executions.userId, owner), eq(executions.status, 'paused'))
@@ -375,7 +375,7 @@ export class AgentOrchestrator {
         }
         execution.status = status;
         execution.context.modelConfig = modelConfig;
-        execution.context.tokens = tokens;
+        delete execution.context.tokens;
         if (approved) {
             await this.runWorkflowLoop(execution, storedWorkflow, revised ? undefined : digest, modelConfig);
         } else {
@@ -436,6 +436,14 @@ export class AgentOrchestrator {
                     }
                     if (/^(FormFiller|DOMReader|GmailScraper|SmartClick|Screenshot|Browser Interaction_(Smart Click|Read Page Content|Fill Forms|Take Screenshot))$/.test(step.tool || '') && !execution.context.browserTarget?.targetUrl)
                         throw new Error('Select the intended browser page and try again');
+                    if (step.tool === 'FormFiller' || step.tool === 'Browser Interaction_Fill Forms') {
+                        const bulk = step.tool === 'Browser Interaction_Fill Forms' || step.params.action === 'fill_form';
+                        const selectors = bulk ? Object.keys(step.params.formData || step.params.schema || {}) : [step.params.selector];
+                        const identity = await this.executeClientTool(execution.id,randomUUID(),'DOMReader',
+                            {action:'form_identity',selectors,...execution.context.browserTarget},undefined,execution.userId);
+                        if (!Array.isArray(identity) || !identity.length) throw new Error('Inspect the intended form before approval');
+                        step.params.reviewedFields = identity;
+                    }
                     if (step.tool === 'FormFiller' && step.params.action === 'attach') {
                         const original = await knowledgeBase.original(execution.userId,Number(step.params.documentId));
                         if (!original?.original) throw new Error('Choose an original document manually');
@@ -452,12 +460,21 @@ export class AgentOrchestrator {
                     }
                     const deferredCalendar=step.tool==='PlanningAdapter_schedule' && step.params.action==='calendar';
                     const eventAction=step.tool?.split('GoogleCalendarAdapter_')[1];
+                    const provider = adapterRegistry.getAll().find(a => step.tool?.startsWith(a.name+'_'))?.provider;
+                    const boundProvider = deferredCalendar ? 'google' : provider;
+                    const requiresBinding = boundProvider && (boundProvider !== 'linkedin' || step.tool==='LinkedInAdapter_delete_post') &&
+                        (workflow.definition.requiresApproval || step.requiresApproval || needsApproval(step.tool || '',step.params));
+                    if (requiresBinding) {
+                        const grant = await oauthManager.getCredentials(execution.userId,boundProvider);
+                        const params = deferredCalendar ? step.params.payload : step.params;
+                        params.accountBinding = grant?.binding ?? null;
+                        params.accountSubject = grant?.metadata?.sub ?? null;
+                    }
                     if (deferredCalendar || ['create_event','update_event','delete_event'].includes(eventAction || '')) {
-                        let credentials=await oauthManager.getCredentials(execution.userId,'google');
-                        if (credentials && oauthManager.isTokenExpired(credentials.expiresAt)) credentials=await oauthManager.refreshToken(execution.userId,'google');
-                        const tokens=credentials ? {access_token:credentials.accessToken,refresh_token:credentials.refreshToken} : execution.context.tokens;
-                        const payload=await new GoogleCalendarAdapter().prepareChange(deferredCalendar ? 'create_event' : eventAction!,
-                            deferredCalendar ? step.params.payload : step.params,{tokens});
+                        const params = deferredCalendar ? step.params.payload : step.params;
+                        const payload = await oauthManager.withGrant(execution.userId,'google',params.accountBinding,
+                            grant => new GoogleCalendarAdapter().prepareChange(deferredCalendar ? 'create_event' : eventAction!,
+                                params,{tokens:{access_token:grant.accessToken}}));
                         if (deferredCalendar) step.params.payload=payload;
                         else step.params=payload;
                     }
@@ -708,16 +725,20 @@ Generate a brief, friendly, conversational response summarizing the result for t
                     if (adapter && step.tool) {
                         const actionName = step.tool.replace(adapter.name + '_', '');
                         const context: Record<string,any> = {...execution.context,userId:execution.userId,approval,idempotencyKey:execution.id+'/'+step.id};
+                        delete context.tokens;
                         if (adapter.type==='oauth' && adapter.provider && adapter.provider!=='linkedin') {
-                            let credentials=await oauthManager.getCredentials(execution.userId,adapter.provider);
-                            if (credentials && oauthManager.isTokenExpired(credentials.expiresAt)) credentials=await oauthManager.refreshToken(execution.userId,adapter.provider);
-                            if (credentials) context.tokens={access_token:credentials.accessToken,refresh_token:credentials.refreshToken};
-                            else if (adapter.provider!=='google') {
-                                if (process.env.INTEGRATION_CREDENTIAL_OWNER!==execution.userId) throw new Error('Connect your '+adapter.provider+' account');
-                                context.tokens=undefined;
+                            const provider=adapter.provider;
+                            const grant=await oauthManager.getCredentials(execution.userId,provider);
+                            if (grant || ['google','slack','jira'].includes(provider)) {
+                                const binding=approval ? step.params?.accountBinding : grant?.binding;
+                                const {accountBinding,accountSubject,...providerParams} = step.params || {};
+                                result=await oauthManager.withGrant(execution.userId,provider,binding, active =>
+                                    adapter.execute(actionName,providerParams,{...context,tokens:{access_token:active.accessToken}}));
+                            } else {
+                                if (step.params?.accountBinding || process.env.INTEGRATION_CREDENTIAL_OWNER!==execution.userId) throw new Error('Connect your '+provider+' account');
+                                result=await adapter.execute(actionName,step.params,context);
                             }
-                        }
-                        result = await adapter.execute(actionName, step.params, context);
+                        } else result = await adapter.execute(actionName, step.params, context);
                     } else {
                         // Add fallback for direct tool name (e.g. "GmailScraper")
                         const toolDef = toolRegistry.get(toolName);

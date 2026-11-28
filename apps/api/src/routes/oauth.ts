@@ -2,9 +2,6 @@ import { getCookie,setCookie,deleteCookie } from 'hono/cookie';
 import { pool } from '../db/index.js';
 import { Hono } from 'hono';
 import { oauthManager } from '../services/oauth-manager.js';
-import { db } from '../db/index.js';
-import { users } from '../db/schema.js';
-import { eq } from 'drizzle-orm';
 import crypto from 'crypto';
 import { authMiddleware, AuthEnv } from '../lib/auth.js';
 
@@ -31,6 +28,7 @@ const OAUTH_PROVIDERS: Record<string, OAuthProvider> = {
         clientId: process.env.GOOGLE_CLIENT_ID || '',
         clientSecret: process.env.GOOGLE_AUTH_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || '',
         scopes: [
+            'openid',
             'https://www.googleapis.com/auth/gmail.readonly',
             'https://www.googleapis.com/auth/gmail.send',
             'https://www.googleapis.com/auth/calendar',
@@ -105,7 +103,7 @@ oauth.get('/callback/:provider', async (c) => {
 
     if (!state || getCookie(c,'oauth_link')!==state) return c.json({error:'Invalid OAuth state'},400);
     deleteCookie(c,'oauth_link',{path:'/oauth'});
-    const {rows:[link]}=await pool.query('DELETE FROM oauth_link_states WHERE nonce=$1 AND provider=$2 AND expires_at>now() RETURNING user_id',[state,provider]);
+    const {rows:[link]}=await pool.query('SELECT user_id FROM oauth_link_states WHERE nonce=$1 AND provider=$2 AND expires_at>now()',[state,provider]);
     if (!link || error || !code) return c.json({error:'Authorization expired or declined'},400);
     try {
         // Exchange authorization code for access token
@@ -133,11 +131,11 @@ oauth.get('/callback/:provider', async (c) => {
 
         const userId=link.user_id;
         let sub: string | undefined;
-        if (provider==='linkedin') {
-            const identity=await fetch('https://api.linkedin.com/v2/userinfo',{headers:{Authorization:'Bearer '+tokenData.access_token}});
-            if (!identity.ok) return c.json({error:'LinkedIn identity unavailable'},403);
+        if (provider==='linkedin' || provider==='google') {
+            const identity=await fetch(provider==='google' ? 'https://openidconnect.googleapis.com/v1/userinfo' : 'https://api.linkedin.com/v2/userinfo',{headers:{Authorization:'Bearer '+tokenData.access_token}});
+            if (!identity.ok) return c.json({error:'Provider identity unavailable'},403);
             sub=(await identity.json()).sub;
-            if (!sub) return c.json({error:'LinkedIn member identity unavailable'},403);
+            if (!sub) return c.json({error:'Provider member identity unavailable'},403);
         }
 
         // --- Store Credentials ---
@@ -151,7 +149,7 @@ oauth.get('/callback/:provider', async (c) => {
                 : undefined,
             scope: tokenData.scope,
             metadata: { sub, tokenType:tokenData.token_type }
-        });
+        },state);
 
         return c.html(`
             <html>

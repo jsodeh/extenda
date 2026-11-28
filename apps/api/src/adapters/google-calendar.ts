@@ -125,7 +125,7 @@ export class GoogleCalendarAdapter extends BaseAdapter {
 
     constructor(
         private readonly client = (auth: InstanceType<typeof google.auth.OAuth2>) =>
-            google.calendar({ version: 'v3', auth })
+            google.calendar({ version: 'v3', auth, timeout: 20000 })
     ) {
         super();
     }

@@ -249,10 +249,9 @@ authOAuth.get('/callback/:provider', async (c) => {
         }
         if (provider === 'google') {
             await oauthManager.storeCredentials({userId:user.id,provider,accessToken:tokenData.access_token,
-                refreshToken:tokenData.refresh_token || user.googleRefreshToken || undefined,
+                refreshToken:tokenData.refresh_token,
                 expiresAt:tokenData.expires_in ? new Date(Date.now()+tokenData.expires_in*1000) : undefined,
-                scope:tokenData.scope});
-            await db.update(users).set({googleAccessToken:null,googleRefreshToken:null}).where(eq(users.id,user.id));
+                scope:tokenData.scope,metadata:{sub:userInfo.sub || userInfo.id}});
         }
         // Generate JWT tokens
         const jwtSecret = process.env.JWT_SECRET;

@@ -1,8 +1,10 @@
+import { formDestination, formIdentity, owningForm, verifyFormIdentity } from './form-identity';
 import { DOMReader, visible, choiceList } from './dom-reader';
 export interface FormFillerParams {
     action: 'fill_text' | 'click' | 'select' | 'submit' | 'fill_form' | 'attach' | 'advance';
     selector?: string;
     value?: string;
+    reviewedFields?: ReturnType<typeof formIdentity>;
     formData?: Record<string, string | boolean>;
     file?: { name: string; type: string; bytes: number[] };
 }
@@ -26,11 +28,9 @@ function reviewableForm(form: HTMLFormElement) {
 }
 
 export class FormFiller {
-    static async fillText(selector: string, value: string | boolean) {
+    private static async fillText(selector: string, value: string | boolean, verify: () => void) {
         const el = field(selector);
-        const form = (el as HTMLInputElement).form || el.closest('form');
-        if (form && new URL(form.action, location.href).origin !== location.origin)
-            throw new Error('This form sends data to another origin. Complete it manually.');
+        verify();
         if (el.matches('[role=combobox],[role=listbox]')) {
             const available = () => choiceList(el).filter(o => visible(o) && o.textContent?.trim() === String(value));
             if (el.matches('[role=combobox][aria-expanded=false]') && el.getAttribute('aria-controls')) {
@@ -39,6 +39,7 @@ export class FormFiller {
             }
             const choices = available();
             if (choices.length !== 1) throw new Error('Select this option manually');
+            verify();
             choices[0].click();
             await new Promise(resolve => setTimeout(resolve, 0));
             const current = field(selector);
@@ -86,18 +87,18 @@ export class FormFiller {
             throw new Error('The page changed this answer. Review it manually.');
     }
 
-    static async submit(selector: string) {
+    private static async submit(selector: string, verify: () => void) {
         const el = field(selector);
-        const form = el instanceof HTMLFormElement ? el : el.closest('form');
+        const form = owningForm(el);
         if (!form) throw new Error('Select a standard form to submit');
         reviewableForm(form);
         if (!form.reportValidity()) throw new Error('Resolve the highlighted validation errors before submission');
         const submitter = el instanceof HTMLButtonElement || el instanceof HTMLInputElement ? el : undefined;
-        const dest = submitter?.hasAttribute('formaction') ? submitter.formAction : form.action;
-        if (!/^https?:\/\//.test(dest)) throw new Error('Unsupported form destination');
-        const values = Array.from(new FormData(form, submitter).entries())
+        const dest = formDestination(form,submitter);
+        const answers = () => Array.from(new FormData(form, submitter).entries())
             .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : v.name}`)
             .join('\n');
+        const values = answers();
         if (!window.confirm(`Submit these current answers to ${dest}?\n\n${values}`))
             throw new Error('Submission declined');
         const confirmation = () =>
@@ -109,7 +110,10 @@ export class FormFiller {
                     )
                 );
         const before = new Set(confirmation());
-        form.requestSubmit(submitter);
+        verify();
+        if (field(selector) !== el || owningForm(el) !== form || formDestination(form,submitter) !== dest || answers() !== values)
+            throw new Error('Submission changed. Review again.');
+        HTMLFormElement.prototype.requestSubmit.call(form,submitter);
         for (let i = 0; i < 16; i++) {
             const receipt = confirmation().find((t) => !before.has(t));
             if (receipt) return receipt;
@@ -123,6 +127,9 @@ export class FormFiller {
     static async execute(params: FormFillerParams) {
         try {
             const { action, selector } = params;
+            const selectors = action === 'fill_form' ? Object.keys(params.formData || {}) : [selector || ''];
+            const verify = () => verifyFormIdentity(selectors,params.reviewedFields);
+            verify();
             if (action === 'advance' && selector) {
                 const button = field(selector);
                 if (
@@ -149,11 +156,11 @@ export class FormFiller {
                 }
                 throw new Error('Next step could not be verified. Check the page before continuing.');
             } else if (action === 'fill_form' && params.formData) {
-                for (const [key, value] of Object.entries(params.formData)) await this.fillText(key, value);
+                for (const [key, value] of Object.entries(params.formData)) await this.fillText(key, value, verify);
             } else if ((action === 'fill_text' || action === 'select') && selector && params.value !== undefined) {
-                await this.fillText(selector, params.value);
+                await this.fillText(selector, params.value, verify);
             } else if (action === 'submit' && selector)
-                return { success: true, message: await this.submit(selector) };
+                return { success: true, message: await this.submit(selector, verify) };
             else if (action === 'click' && selector) {
                 const el = field(selector);
                 if (el.closest('form') || el.matches('[form]'))
@@ -165,8 +172,6 @@ export class FormFiller {
                 const el = field(selector);
                 if (!(el instanceof HTMLInputElement) || el.type !== 'file')
                     throw new Error('Select the file manually');
-                if (el.form && new URL(el.form.action).origin !== location.origin)
-                    throw new Error('Choose the file manually for this external destination');
                 if (el.files?.length) throw new Error('Review and replace the existing selection manually');
                 const { name, type, bytes } = params.file;
                 const accepts = el.accept.toLowerCase().split(',').map(a => a.trim()).filter(Boolean);

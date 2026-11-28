@@ -119,7 +119,7 @@ export class GmailAdapter extends BaseAdapter {
             throw new Error('Authentication Error: No Google access token available for this session.');
         }
 
-        const gmail = google.gmail({ version: 'v1', auth });
+        const gmail = google.gmail({ version: 'v1', auth, timeout: 20000 });
 
         switch (actionName) {
             case 'list_emails':

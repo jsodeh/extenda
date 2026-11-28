@@ -92,7 +92,7 @@ export async function linkedAccount(owner: string) {
         !credentials.metadata?.sub
     )
         return null;
-    return { author: 'urn:li:person:' + credentials.metadata.sub, token: credentials.accessToken };
+    return { author: 'urn:li:person:' + credentials.metadata.sub, binding: credentials.binding, token: credentials.accessToken };
 }
 
 export async function drafts(owner: string) {
@@ -160,6 +160,7 @@ export async function preparePost(owner: string, params: any) {
         draftId: params.draftId,
         version,
         author: account?.author || null,
+        accountBinding: account?.binding || null,
         at: params.at || null,
         timezone: validTimezone(params.timezone || 'UTC')
     };

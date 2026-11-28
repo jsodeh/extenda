@@ -20,7 +20,6 @@ import { authMiddleware, allowedExtensionOrigin, AuthEnv } from './lib/auth.js';
 import { authOAuth } from './routes/auth-oauth.js';
 import { db,pool } from './db/index.js';
 import { users, executions, workflows } from './db/schema.js';
-import { oauthManager } from './services/oauth-manager.js';
 import { chatService } from './services/chat-service.js';
 
 const port = Number(process.env.PORT) || 3000;
@@ -88,6 +87,7 @@ io.use(async (socket, next) => {
 
         // Fetch user from DB by ID
         const user = await db.query.users.findFirst({
+            columns: {id:true},
             where: eq(users.id, userId)
         });
 
@@ -281,20 +281,7 @@ RULES:
             socket.emit('agent:status', { state: 'thinking', message: 'Analyzing request...' });
             console.log('[DEBUG] 1. Status emitted');
 
-            // OPTIMIZATION 2: Lazy OAuth - only for workflow intents
-            console.log('[DEBUG] Checking tokens for workflow...');
-            const validUser = user;
-            console.log('[DEBUG] Tokens valid');
-
-            // Context for tools (tokens)
-            const context = {
-                timestamp: new Date(),
-                tokens: {
-                    access_token: validUser.googleAccessToken,
-                    refresh_token: validUser.googleRefreshToken
-                },
-                modelConfig: data.modelConfig
-            };
+            const context = {timestamp:new Date(), modelConfig:data.modelConfig};
 
             // Workflow planning
             socket.emit('agent:status', { state: 'planning', message: 'Designing workflow...' });
@@ -379,9 +366,7 @@ RULES:
     });
     socket.on(EVENTS_CLIENT.WORKFLOW_RESUME, async (data: WorkflowResumePayload) => {
         try {
-            await orchestrator.resume(data.executionId, user.id, data.approved, data.approval, data.modelConfig, {
-                access_token: user.googleAccessToken, refresh_token: user.googleRefreshToken
-            }, data.revised);
+            await orchestrator.resume(data.executionId, user.id, data.approved, data.approval, data.modelConfig, data.revised);
         } catch (error) {
             console.error('Workflow resume failed',socket.id);
             socket.emit(EVENTS_SERVER.WORKFLOW_ERROR, { error: `Failed to resume: ${(error as Error).message}` });

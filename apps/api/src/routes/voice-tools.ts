@@ -57,8 +57,7 @@ tools.post('/:name', async (c) => {
         startedAt: new Date(),
         context: {
             timestamp: new Date(),
-            sessionId: session.id,
-            tokens: { access_token: user.googleAccessToken, refresh_token: user.googleRefreshToken }
+            sessionId: session.id
         },
         steps: [{ stepId: step.id, status: 'pending', retryCount: 0 }]
     };

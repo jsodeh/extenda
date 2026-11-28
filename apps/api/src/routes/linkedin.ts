@@ -10,7 +10,8 @@ router.use('*', authMiddleware);
 router.onError((_, c) => c.json({ error: 'Draft or account changed. Reload before continuing.' }, 409));
 router.get('/', async (c) => {
     const owner = c.get('user').id;
-    return c.json({ drafts: await drafts(owner), author: (await linkedAccount(owner))?.author || null });
+    const account = await linkedAccount(owner);
+    return c.json({drafts:await drafts(owner), author:account?.author || null, accountBinding:account?.binding || null});
 });
 router.put('/:id', async (c) => {
     const body = await c.req.json();
@@ -24,7 +25,7 @@ router.post('/:id/approve', async (c) => {
     const post = await preparePost(owner, { draftId: id, at: body.at, timezone: body.timezone });
     if (
         !post.author ||
-        body.author !== post.author ||
+        body.author !== post.author || body.accountBinding !== post.accountBinding ||
         body.version !== post.version ||
         body.text !== post.text ||
         body.visibility !== post.visibility ||

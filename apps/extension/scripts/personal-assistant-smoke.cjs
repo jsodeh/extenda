@@ -222,7 +222,19 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     assert.ok(ready, 'Content script did not become available on the fixture page');
     const read = await dispatch('EXECUTE_DOM_READER', { action: 'inspect_form' });
     assert.ok(read.data.some((row) => row.label === 'Full name' && row.required));
-    const changed = await dispatch('EXECUTE_FORM_FILLER', {
+    const reviewFields = async (selector) => (await dispatch('EXECUTE_DOM_READER',{action:'form_identity',selectors:[selector]})).data;
+    const reviewedFill = async params => dispatch('EXECUTE_FORM_FILLER',{...params,reviewedFields:await reviewFields(params.selector)});
+    const previous = await reviewFields('#name');
+    await form.evaluate(() => {
+        const current=document.querySelector('form');
+        const original=current.cloneNode(true);
+        current.replaceWith(original);
+        original.onsubmit=current.onsubmit;
+        original.querySelector('#next').onclick=current.querySelector('#next').onclick;
+    });
+    assert.equal((await dispatch('EXECUTE_FORM_FILLER',{action:'fill_text',selector:'#name',value:'Private',reviewedFields:previous})).success,false);
+    assert.equal(await form.locator('#name').inputValue(),'');
+    const changed = await reviewedFill({
         action: 'fill_text',
         selector: '#name',
         value: 'Fixture',
@@ -230,21 +242,21 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     });
     assert.equal(changed.success, false);
     assert.equal(
-        (await dispatch('EXECUTE_FORM_FILLER', { action: 'fill_text', selector: '#name', value: 'Fixture' }))
+        (await reviewedFill({ action: 'fill_text', selector: '#name', value: 'Fixture' }))
             .success,
         true
     );
     const sampleFile = {name:'fixture.txt',type:'text/plain',bytes:[65,66]};
     const attachment = {action:'attach',selector:'#attachment',file:sampleFile};
-    assert.equal((await dispatch('EXECUTE_FORM_FILLER', attachment)).success,true);
+    assert.equal((await reviewedFill(attachment)).success,true);
     assert.equal(await form.locator('#attachment').evaluate(e => e.files[0].name),'fixture.txt');
-    assert.equal((await dispatch('EXECUTE_FORM_FILLER', attachment)).success,false);
-    assert.equal((await dispatch('EXECUTE_FORM_FILLER', { action: 'advance', selector: '#next' })).success, true);
+    assert.equal((await reviewedFill(attachment)).success,false);
+    assert.equal((await reviewedFill({ action: 'advance', selector: '#next' })).success, true);
     form.once('dialog', async (d) => {
         assert.match(d.message(), /name: Fixture/);
         await d.accept();
     });
-    const receipt = await dispatch('EXECUTE_FORM_FILLER', { action: 'submit', selector: '#send' });
+    const receipt = await reviewedFill({ action: 'submit', selector: '#send' });
     assert.equal(receipt.data, 'Application received');
     console.log(
         'PASS: MV3 form detection, target change rejection, filling, next step, local approval and confirmation receipt'
@@ -281,6 +293,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         console.log('PASS: voice email requires approval and a browser-role socket cannot accept it');
     } finally { browserPeer.disconnect(); }
     const reviewed = [];
+    let oldFormApproval;
     await new Promise((resolve, reject) => {
         const timeout = setTimeout(
             () => reject(Error('Combined workflow timed out. Reviews: ' + reviewed.join(', '))),
@@ -294,7 +307,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
             clearTimeout(timeout);
             resolve();
         });
-        client.on('workflow:plan', (data) => {
+        client.on('workflow:plan', async (data) => {
             if (data.status !== 'paused') return;
             try {
                 const step = data.plan.definition.steps.find((s) => s.id === data.pendingStepId);
@@ -302,6 +315,12 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
                     assert.equal(step.params.targetUrl, application);
                     assert.deepEqual(step.params.formData, { '#education': 'MSc Fixture Science' });
                     assert.deepEqual(step.params.missing, ['Certification']);
+                    assert.equal(step.params.reviewedFields[0].label,'Education');
+                    assert.equal(await form.locator('#education').inputValue(),'');
+                    if (!oldFormApproval) {
+                        oldFormApproval = data.approval;
+                        await form.evaluate(()=>{ const f=document.querySelector('form'); f.replaceWith(f.cloneNode(true)); });
+                    } else assert.notEqual(data.approval,oldFormApproval);
                 } else assert.equal(step.id, 'reminder');
                 reviewed.push(step.id);
                 client.emit('workflow:resume', {
@@ -322,7 +341,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
             context: { browserTarget: { tabId, targetUrl: application } }
         });
     });
-    assert.deepEqual(reviewed, ['fill', 'reminder']);
+    assert.deepEqual(reviewed, ['fill', 'fill', 'reminder']);
     assert.equal(await form.locator('#education').inputValue(), 'MSc Fixture Science');
     assert.equal(await form.locator('#certificate').inputValue(), '');
     assert.equal(

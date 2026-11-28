@@ -82,6 +82,7 @@ export default function HistoryPage({ onSelectSession, onBack }: HistoryPageProp
 
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
                 <section className="bg-card rounded-xl border p-4 space-y-2"><h2 className="font-semibold">Scheduled tasks</h2>
+                    <p className="text-sm text-muted-foreground">Desktop reminders appear when Chrome is connected. If Chrome is closed or offline, they appear after it reconnects.</p>
                     <form onSubmit={async e=>{e.preventDefault();try{await privateRequest('/api/schedule/timezone',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({timezone:zone})});setError('Timezone saved');}catch(e){setError((e as Error).message);}}}>
                         <label>Timezone <input className="bg-background border rounded" value={zone} onChange={e=>setZone(e.target.value)} /></label> <button>Save</button>
                     </form>

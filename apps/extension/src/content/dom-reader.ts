@@ -1,10 +1,12 @@
+import { formIdentity } from './form-identity';
 /**
  * DOMReader Tool - Extract content from web pages
  * Executed in content script context
  */
 
 export interface DOMReaderParams {
-    action: 'inspect_form' | 'extract_text' | 'extract_structured' | 'find_element' | 'get_metadata' | 'screenshot';
+    selectors?: string[];
+    action: 'form_identity' | 'inspect_form' | 'extract_text' | 'extract_structured' | 'find_element' | 'get_metadata' | 'screenshot';
     selector?: string;
     schema?: Record<string, string>; // CSS selectors for structured extraction
     description?: string; // Natural language element description
@@ -141,6 +143,9 @@ export class DOMReader {
             let data: any;
 
             switch (params.action) {
+                case 'form_identity':
+                    data = formIdentity(params.selectors || []);
+                    break;
                 case 'inspect_form':
                     data = Array.from(document.querySelectorAll<HTMLElement>('form,input:not([type=hidden]),select,textarea,button,[contenteditable=true],[role=alert],[role=combobox],[role=listbox]')).filter(visible).slice(0,150).map(el => {
                         const control = el as HTMLInputElement;

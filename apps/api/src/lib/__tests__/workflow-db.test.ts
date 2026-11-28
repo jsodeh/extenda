@@ -1,6 +1,6 @@
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomBytes } from 'node:crypto';
 import type { Execution, Workflow } from '@extenda/shared';
 
 it(
@@ -9,6 +9,7 @@ it(
     async () => {
         process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
         process.env.JWT_SECRET = randomUUID();
+        process.env.ENCRYPTION_KEY = randomBytes(32).toString('hex');
         const { pool } = await import('../../db/index.js');
         const { runMigrations } = await import('../../db/migrate.js');
         const { AgentOrchestrator } = await import('../../services/orchestrator.js');
@@ -81,6 +82,9 @@ it(
         await runMigrations();
         try {
             await pool.query('INSERT INTO users(id,email) VALUES($1,$2)', [owner, owner + '@example.test']);
+            const {oauthManager}=await import('../../services/oauth-manager.js');
+            const connectGoogle=(sub:string)=>oauthManager.storeCredentials({userId:owner,provider:'google',accessToken:'fixture',metadata:{sub}});
+            await connectGoogle('first');
             const voice = (await import('../../routes/voice-tools.js')).default;
             const { sign } = await import('hono/jwt');
             const response = await voice.request('/send_email',{method:'POST',headers:{
@@ -89,6 +93,14 @@ it(
             assert.equal(response.status,202);
             const pending = await response.json() as {executionId:string};
             assert.equal((await state(pending.executionId)).context.review.tool,'GmailAdapter_send_email');
+            const before = (await state(pending.executionId)).context;
+            await oauthManager.deleteCredentials(owner,'google');
+            await connectGoogle('second');
+            await runner().resume(pending.executionId,owner,true,before.approval);
+            const after=await state(pending.executionId);
+            assert.equal(after.status,'paused');
+            assert.equal(after.context.review.params.accountSubject,'second');
+            assert.notEqual(after.context.approval,before.approval);
             await runner().cancel(pending.executionId,owner);
             const id = await start(['FormAnswers', 'FixtureAdapter_write', 'FixtureAdapter_write']);
             const paused = await state(id);

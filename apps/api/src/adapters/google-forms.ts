@@ -89,7 +89,7 @@ export class GoogleFormsAdapter extends BaseAdapter {
             auth.setCredentials(context.tokens);
         }
 
-        const forms = google.forms({ version: 'v1', auth });
+        const forms = google.forms({ version: 'v1', auth, timeout: 20000 });
 
         switch (actionName) {
             case 'create_form':

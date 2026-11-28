@@ -77,3 +77,29 @@ it('rejects a provider callback with mismatched state before contacting the prov
     });
     assert.equal(res.status, 400);
 });
+
+it('leaves unsupported, negated, expired, conflicting and third-party professional claims blank', () => {
+    const cases = [
+        ['Certification','PMP','Certifications: PMP. I never completed PMP.'],
+        ['Certification','PMP','Certifications: PMP (expired 2023).'],
+        ['Certification','PMP','Certifications: PMP. Expired in 2023.'],
+        ['Education','MSc','Name: Another Person. Education: MSc.'],
+        ['Certification','PMP','Reference: Ada. Certifications: PMP.'],
+        ['Education','MSc','Education: MSc','Education: BSc'],
+        ['Employment start date','2020','Employment dates: 2019 or 2020'],
+        ['Employer','Example Co','My colleague worked at Example Co.'],
+        ['Professional achievements','Led the project','Achievements: Contributed to the project.'],
+        ['Professional achievements','Example launch','Projects: Example launch.'],
+        ['Contact email','1234','Phone: 1234.'],
+        ['Employment start date','2026-02-30','Employment start date: 2026-02-30.'],
+        ['Motivation','I led the team','Projects: Helped with testing.']
+    ];
+    for (const [label,value,...docs] of cases) {
+        const result=groundedAnswers([{label,type:'text',selector:'#f',required:true}],docs.map(d=>'[CV] '+d),
+            [{selector:'#f',source:0,value,quote:docs[0].includes(value) ? value : docs[0],kind:'fact'}]);
+        assert.deepEqual(result.missing,[label],docs.join(' / '));
+    }
+    const date=groundedAnswers([{label:'Employment start date',type:'date',selector:'#f',required:true}],
+        ['[CV] Employment start date: 2020-01-06'],[{selector:'#f',source:0,value:'2020-01-06',quote:'2020-01-06',kind:'fact'}]);
+    assert.equal(date.formData['#f'],'2020-01-06');
+});

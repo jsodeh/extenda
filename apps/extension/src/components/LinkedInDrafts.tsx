@@ -14,6 +14,7 @@ interface Draft {
 export default function LinkedInDrafts() {
     const [drafts, setDrafts] = useState<Draft[]>([]);
     const [author, setAuthor] = useState('');
+    const [accountBinding,setAccountBinding] = useState('');
     const [error, setError] = useState('');
     const [editing, setEditing] = useState<Draft | null>(null);
     const [at, setAt] = useState('');
@@ -21,6 +22,7 @@ export default function LinkedInDrafts() {
         const data = await (await privateRequest('/api/linkedin')).json();
         setDrafts(data.drafts);
         setAuthor(data.author || '');
+        setAccountBinding(data.accountBinding || '');
     };
     useEffect(() => {
         refresh().catch((e) => setError(e.message));
@@ -40,7 +42,7 @@ export default function LinkedInDrafts() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     ...draft,
-                    author,
+                    author, accountBinding,
                     at: time,
                     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
                 })

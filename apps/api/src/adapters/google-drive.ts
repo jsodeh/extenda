@@ -104,7 +104,7 @@ export class GoogleDriveAdapter extends BaseAdapter {
             auth.setCredentials(context.tokens);
         }
 
-        const drive = google.drive({ version: 'v3', auth });
+        const drive = google.drive({ version: 'v3', auth, timeout: 20000 });
 
         switch (actionName) {
             case 'list_files':

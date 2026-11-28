@@ -96,7 +96,7 @@ export class GoogleSheetsAdapter extends BaseAdapter {
             throw new Error('Authentication required: No tokens found for GoogleSheetsAdapter');
         }
 
-        const sheets = google.sheets({ version: 'v4', auth });
+        const sheets = google.sheets({ version: 'v4', auth, timeout: 20000 });
 
         switch (actionName) {
             case 'read_sheet':

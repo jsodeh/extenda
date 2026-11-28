@@ -55,7 +55,7 @@ export class GoogleDocsAdapter extends BaseAdapter {
             throw new Error('Authentication required: No tokens found for GoogleDocsAdapter');
         }
 
-        const docs = google.docs({ version: 'v1', auth });
+        const docs = google.docs({ version: 'v1', auth, timeout: 20000 });
 
         switch (actionName) {
             case 'read_doc':
